@@ -31,7 +31,11 @@ def _nameString(component, printIDs = False):
     name = component.name
     if name is None: name = "<No name>"
 
-    nameStr += f'{name:16}'
+    symbols = component.symbolsString()
+    if symbols is not None:
+        name += f' {symbols}'
+
+    nameStr += f'{name:20}'
     
     return nameStr
 
@@ -169,17 +173,18 @@ def printWaferStatus(connection:mom.connection,
                 print(f"{wafName}")
             _printWaferInfo(wafer)
             for bar in bars: _printBarInfo(bar)
-            for chip in chips: _printBarInfo(chip)
+            for chip in chips: _printChipInfo(chip)
             print()
     
-
-#%%
-
 if __name__ == '__main__':
 
+    print("""\n\n --- This is a demo script. ---
+You should copy-paste it outside the library before modifying it,
+otherwise it will be overwritten at the next Git pull.\n""")
+
     wafers = [
-        '2DR0003',
-        '2DR0006',
+        # '2DR0003',
+        # '2DR0006',
         '2DR0014',
         '2DR0015',
     ]
@@ -191,4 +196,4 @@ if __name__ == '__main__':
     #   > printWafers = True/False
     #   > printBars = True/False
     #   > printChips = True/False
-# %%
+
