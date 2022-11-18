@@ -46,7 +46,8 @@ def printWaferStatus(connection:mom.connection,
     printIDs = False,
     printWafers = True,
     printBars = True,
-    printChips = False):
+    printChips = False,
+    excludeNoneStatus = False):
 
     def _retrieveWafer(waferName):
         
@@ -165,15 +166,27 @@ def printWaferStatus(connection:mom.connection,
             bars = []
         if chips is None:
             chips = []
+
         if resultsDict[wafName]['wafer'] is None:
             print(f'Wafer "{wafName}" not found.\n')
         else:
             
             if not printWafers:
                 print(f"{wafName}")
-            _printWaferInfo(wafer)
-            for bar in bars: _printBarInfo(bar)
-            for chip in chips: _printChipInfo(chip)
+            else:
+                _printWaferInfo(wafer)
+
+            for bar in bars:
+                if bar.status is None:
+                    if excludeNoneStatus:
+                        continue
+                _printBarInfo(bar)
+
+            for chip in chips:
+                if chip.status is None:
+                    if excludeNoneStatus:
+                        continue
+                _printChipInfo(chip)
             print()
     
 if __name__ == '__main__':
@@ -191,7 +204,8 @@ otherwise it will be overwritten at the next Git pull.\n""")
 
     mom.log.errorMode()
     conn = mom.connection('R&D', 'rdlab')
-    printWaferStatus(conn, wafers)
+    printWaferStatus(conn, wafers, printChips = True,
+    excludeNoneStatus = True)
     # In printWaferStatus() you can use
     #   > printWafers = True/False
     #   > printBars = True/False
