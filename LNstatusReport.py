@@ -40,7 +40,7 @@ def _nameString(component, printIDs = False):
     return nameStr
 
 
-def printWaferStatus(connection:mom.connection,
+def printWaferDashboard(connection:mom.connection,
     waferNames:list,
     *,
     printIDs = False,
@@ -204,8 +204,8 @@ otherwise it will be overwritten at the next Git pull.\n""")
 
     mom.log.errorMode()
     conn = mom.connection('R&D', 'rdlab')
-    printWaferStatus(conn, wafers, printChips = True,
-    excludeNoneStatus = True)
+    printWaferDashboard(conn, wafers, printChips = True,
+    excludeNoneStatus = False)
     # In printWaferStatus() you can use
     #   > printWafers = True/False
     #   > printBars = True/False
