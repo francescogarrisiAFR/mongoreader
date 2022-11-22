@@ -31,11 +31,11 @@ def _nameString(component, printIDs = False):
     name = component.name
     if name is None: name = "<No name>"
 
-    symbols = component.symbolsString()
+    symbols = component.indicatorsString()
     if symbols is not None:
-        name += f' {symbols}'
+        name += f' ({symbols})'
 
-    nameStr += f'{name:20}'
+    nameStr += f'{name:30}'
     
     return nameStr
 
