@@ -4,6 +4,7 @@ import mongoreader.core as c
 from mongoutils import isID
 from mongoutils.connections import opened
 from mongomanager import log
+from mongomanager.errors import DocumentNotFound
 
 
 
@@ -36,7 +37,7 @@ class waferCollation(c.collation):
             database, collection, 'native')
         
             if wafer is None:
-                raise Exception(f'Could not find a wafer from string "{waferName_orID}".')
+                raise DocumentNotFound(f'Could not find a wafer from string "{waferName_orID}".')
 
         else:
             if not isID(waferName_orID):
@@ -44,7 +45,7 @@ class waferCollation(c.collation):
 
             wafer = mom.importWafer(waferName_orID, self.connection)
             if wafer is None:
-                raise Exception(f'Could not import a wafer from ID "{waferName_orID}".')
+                raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
 
         log.info(f'Collected wafer "{wafer.name}"')
         return wafer
@@ -83,6 +84,95 @@ class waferCollation(c.collation):
     def refresh(self):
         """Refreshes all the components from the database."""
         raise NotImplementedError()
+
+
+    # ---------------------------------------------------
+    # Data retrieval methods
+
+    @staticmethod
+    def chipSummaryDict(chip):
+
+        dic = {
+                'name': chip.name,
+                'ID': chip.ID,
+                'status': chip.status,
+                'statusDateOfChange': chip.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
+                'hasNotes': chip.hasNotes(),
+                'hasWarnings': chip.hasWarnings(),
+                'hasLog': chip.hasLog(),
+                'hasTestHistory': chip.hasTestHistory(),
+                'hasProcessHistory': chip.hasProcessHistory(),
+                'hasFiles': chip.hasFiles(),
+                'hasImages': chip.hasImages(),
+                'hasAttachments': chip.hasAttachments(),
+            }
+
+        return dic
+
+    @staticmethod
+    def barSummaryDict(bar):
+
+        dic = {
+                'name': bar.name,
+                'ID': bar.ID,
+                'status': bar.status,
+                'statusDateOfChange': bar.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
+                'hasNotes': bar.hasNotes(),
+                'hasWarnings': bar.hasWarnings(),
+                'hasLog': bar.hasLog(),
+                'hasTestHistory': bar.hasTestHistory(),
+                'hasProcessHistory': bar.hasProcessHistory(),
+                'hasFiles': bar.hasFiles(),
+                'hasImages': bar.hasImages(),
+                'hasAttachments': bar.hasAttachments(),
+            }
+
+        return dic
+
+    @staticmethod
+    def waferSummaryDict(wafer):
+
+        dic = {
+                'name': wafer.name,
+                'ID': wafer.ID,
+                'status': wafer.status,
+                'statusDateOfChange': wafer.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
+                'hasNotes': wafer.hasNotes(),
+                'hasWarnings': wafer.hasWarnings(),
+                'hasLog': wafer.hasLog(),
+                'hasTestHistory': wafer.hasTestHistory(),
+                'hasProcessHistory': wafer.hasProcessHistory(),
+                'hasFiles': wafer.hasFiles(),
+                'hasImages': wafer.hasImages(),
+                'hasAttachments': wafer.hasAttachments(),
+            }
+
+        return dic
+    
+    def chipsSummaryDict(self):
+
+        if self.chips is None:
+            return {}
+        else:
+            return {chip.name: self.chipSummaryDict(chip) for chip in self.chips}
+
+    def barsSummaryDict(self):
+
+        if self.bars is None:
+            return {}
+        else:
+            return {bar.name: self.chipSummaryDict(bar) for bar in self.bars}
+
+    def summaryDict(self):
+
+        dic = {
+            'wafer': self.waferSummaryDict(self.wafer),
+            'chips': self.chipsSummaryDict(),
+            'bars': self.barsSummaryDict(),
+        }
+
+        return dic
+
 
     @staticmethod
     def printWaferInfo(wafer, printIDs:bool = False):
