@@ -34,7 +34,8 @@ class waferCollation(c.collation):
         if isinstance(waferName_orID, str):
 
             wafer = mom.queryOne(self.connection, {'name': {'$regex': waferName_orID}}, None,
-            database, collection, 'native')
+            database, collection, 'native',
+            verbose = False)
         
             if wafer is None:
                 raise DocumentNotFound(f'Could not find a wafer from string "{waferName_orID}".')
@@ -61,7 +62,8 @@ class waferCollation(c.collation):
             bars = mom.query(self.connection,
                 {'parentComponentID': wafID, 'componentType': 'wafer bar'},
                 None,
-                database, collection, 'native')
+                database, collection, 'native',
+                verbose = False)
 
         log.info(f'Collected {len(bars)} bars')
         for ind, bar in enumerate(bars):
@@ -250,8 +252,16 @@ class waferCollation_PAM4(waferCollation):
         
         super().__init__(connection, waferName_orCmp_orID, database, collection)
 
+        if len(self.bars) != 6:
+            log.warning(f'I expected to find 6 bars. Instead, I found {len(self.bars)}.')
+
+        if len(self.chips) != 69:
+            log.warning(f'I expected to find 69 chips. Instead, I found {len(self.bars)}.')
+
         self.barsDict = self.defineBarsDict()
         self.chipsDict = self.defineChipsDict()
+
+
 
 
     def collectWafer(self, waferName:str,
