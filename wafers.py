@@ -98,10 +98,12 @@ class waferCollation(c.collation):
                 'name': chip.name,
                 'ID': chip.ID,
                 'status': chip.status,
+                'tags': chip.getTags(),
                 'statusDateOfChange': chip.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
                 'hasNotes': chip.hasNotes(),
                 'hasWarnings': chip.hasWarnings(),
                 'hasLog': chip.hasLog(),
+                'hasTags': chip.hasTags(),
                 'hasTestHistory': chip.hasTestHistory(),
                 'hasProcessHistory': chip.hasProcessHistory(),
                 'hasFiles': chip.hasFiles(),
@@ -118,10 +120,12 @@ class waferCollation(c.collation):
                 'name': bar.name,
                 'ID': bar.ID,
                 'status': bar.status,
+                'tags': bar.getTags(),
                 'statusDateOfChange': bar.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
                 'hasNotes': bar.hasNotes(),
                 'hasWarnings': bar.hasWarnings(),
                 'hasLog': bar.hasLog(),
+                'hasTags': bar.hasTags(),
                 'hasTestHistory': bar.hasTestHistory(),
                 'hasProcessHistory': bar.hasProcessHistory(),
                 'hasFiles': bar.hasFiles(),
@@ -138,10 +142,12 @@ class waferCollation(c.collation):
                 'name': wafer.name,
                 'ID': wafer.ID,
                 'status': wafer.status,
+                'tags': wafer.getTags(),
                 'statusDateOfChange': wafer.getField(['statusLog', -1, 'dateOfChange'], verbose = False), # Could be wrong.
                 'hasNotes': wafer.hasNotes(),
                 'hasWarnings': wafer.hasWarnings(),
                 'hasLog': wafer.hasLog(),
+                'hasTags': wafer.hasTags(),
                 'hasTestHistory': wafer.hasTestHistory(),
                 'hasProcessHistory': wafer.hasProcessHistory(),
                 'hasFiles': wafer.hasFiles(),
@@ -302,7 +308,14 @@ class waferCollation_PAM4(waferCollation):
 
         return {_keyCriterion(chip): chip for chip in self.chips}
 
+    # Must find a better name!
+    def chipsRetrieveData(self, goggleFunction):
 
+        returnDict = {key: goggleFunction(chip)
+                for key, chip in self.chipsDict.items()}
+
+        return returnDict
+        
 class waferCollation_DR8(waferCollation):
     pass
 
