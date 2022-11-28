@@ -10,16 +10,16 @@ from numpy import random
 
 conn = mom.connection('R&D', 'Francesco')
 
-# wafer = morw.waferCollation_PAM4(conn, '2DR0014')
+wafer = morw.waferCollation_PAM4(conn, '2DR0009')
 
 w = wplt.waferPlotter_PAM4()
 
 
-# %%
+ # %%
 
 def goggleMeasure(chip, measureName:str):
     
-    if not isistance(measureName, str):
+    if not isinstance(measureName, str):
         raise TypeError('"measureName" must be a string.')
     
     outputDictionary = dict()

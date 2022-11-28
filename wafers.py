@@ -7,9 +7,6 @@ from mongomanager import log
 from mongomanager.errors import DocumentNotFound
 
 
-
-
-
 class waferCollation(c.collation):
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
@@ -237,19 +234,81 @@ class waferCollation(c.collation):
                 if bar.status is None:
                     if excludeNoneStatus:
                         continue
-                self.printBarInfo(bar)
+                self.printBarInfo(bar, printIDs)
 
         if printChips:
             for chip in chips:
                 if chip.status is None:
                     if excludeNoneStatus:
                         continue
-                self.printChipInfo(chip)
+                self.printChipInfo(chip, printIDs)
         
 
 
 class waferCollation_CDM(waferCollation):
-    pass
+    
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+        database:str = 'beLaboratory', collection:str = 'components'):
+    
+        super().__init__(connection, waferName_orCmp_orID, database, collection)
+
+        if len(self.bars) != 3:
+            log.warning(f'I expected to find 3 bars. Instead, I found {len(self.bars)}.')
+
+        if len(self.chips) != 39:
+            log.warning(f'I expected to find 39 chips. Instead, I found {len(self.chips)}.')
+
+        self.barsDict = self.defineBarsDict()
+        self.chipsDict = self.defineChipsDict()
+
+
+    def collectWafer(self, waferName:str,
+        database:str = 'beLaboratory', collection:str = 'components'):
+
+        log.debug('waferCollation_2CDM.collectWafer()')
+
+        wafer = super().collectWafer(waferName, database, collection)
+
+        if '2CDM' not in wafer.name:
+            log.warning(f'The collected wafer ("{wafer.name}") may not be a "2CDM" wafer.')
+    
+        return wafer
+
+    def defineBarsDict(self):
+
+        def _keyCriterion(bar):
+            return bar.name.split('-')[1]
+
+        if self.bars is None:
+            self.bars = self.collectBars()
+        
+        if self.bars is None:
+            return {}
+
+        return {_keyCriterion(bar): bar for bar in self.bars}
+
+    def defineChipsDict(self):
+
+        def _keyCriterion(chip):
+            return chip.name.split('_')[1]
+
+        if self.chips is None:
+            self.chips = self.collectChips()
+
+        if self.chips is None:
+            return {}
+
+        return {_keyCriterion(chip): chip for chip in self.chips}
+
+    # Must find a better name!
+    def chipsRetrieveData(self, goggleFunction):
+
+        returnDict = {key: goggleFunction(chip)
+                for key, chip in self.chipsDict.items()}
+
+        return returnDict
+
+
 
 class waferCollation_PAM4(waferCollation):
 
@@ -316,6 +375,8 @@ class waferCollation_PAM4(waferCollation):
 
         return returnDict
         
+
+
 class waferCollation_DR8(waferCollation):
     pass
 

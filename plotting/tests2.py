@@ -47,4 +47,5 @@ measUnit = 'Ω'
 
 wp.plotData_subchipScale(dataDict(measName, wc), dataType = 'float',
                         title = f'Test plot {measName}', waferName = wc.wafer.name,
-                        colormapName = 'inferno', colorbarLabel = f'{measName} [{measUnit}]')
+                        colormapName = 'inferno', colorbarLabel = f'{measName} [{measUnit}]',
+                        chipGroups = None)
