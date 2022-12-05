@@ -17,23 +17,35 @@ from numpy import random, linspace
 
 
 class _waferPlotter:
+    """This class should not be instantiated directly, but only through its sub-classes"""
 
-    def __init__(self, notch = None):
+
+    def __init__(self, notch = None, *,
+        waferMaskLabel:str,
+        allowedGroups:list = None):
+
+        if not isinstance(waferMaskLabel, str):
+            raise TypeError('"waferMaskLabel" must be a string.')
+
+        if allowedGroups is not None:
+            if not isinstance(allowedGroups, list):
+                raise TypeError('"allowedGroups" must be a list of strings or None.')
+            
+            for el in allowedGroups:
+                if not isinstance(el, str):
+                    raise ValueError('"allowedGroups" must be a list of strings or None.')
+
         self.D = 101.6 # Wafer plot diameter in mm
         if notch is None:
             self.notch = 5.0
-        
 
-class waferPlotter_PAM4(_waferPlotter):
+        self.waferSizes = self._retrieveObjectsSizes(waferMaskLabel)
+        self.allowedGroups = allowedGroups
 
-    def __init__(self):
+    def _retrieveObjectsSizes(self, waferMaskLabel):
 
-        super().__init__()
-
-        self.waferSizes = self._retrieveObjectsSizes()
-        self.allowedGroups = ['DR4', 'DR8', 'FR4', 'FR8']
-
-    def _retrieveObjectsSizes(self):
+        if waferMaskLabel is None:
+            return
 
         try:
             path = Path(__file__).parent / 'waferSizes.json'
@@ -41,7 +53,7 @@ class waferPlotter_PAM4(_waferPlotter):
             with open(path, 'r') as file:
                 dimensions = json.load(file)
 
-            return dimensions['Bilbao']
+            return dimensions[waferMaskLabel]
 
         except FileNotFoundError:
             print('Warning: Dimensions file not found!')
@@ -65,13 +77,13 @@ class waferPlotter_PAM4(_waferPlotter):
         for group in groups:
             labels += [key for key in self.waferSizes['chips'] if group in key]
         return labels
-
-
+        
+    
     def _chipP1P2(self, chipLabel:str):
         """Returnes the p1-p2 pairs of points that identify chip rectangles on wafer."""
 
         if not chipLabel in self.waferSizes['chips']:
-            raise ValueError('"chipLabel" is not valid.')
+            raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
         
         p12 = self.waferSizes['chips'][chipLabel]
 
@@ -87,7 +99,8 @@ class waferPlotter_PAM4(_waferPlotter):
         
         return p.rectPatch(p1, p2, color)
 
-    def _chipSubPatches(self, chipLabel:str, colors:list = None):
+    
+    def _chipSubPatches(self, chipLabel:str, subSections:int, colors:list = None):
         """Returns a list of rectangles (possibily colored) that fill the space
         of a chip on the wafer.
         
@@ -100,13 +113,10 @@ class waferPlotter_PAM4(_waferPlotter):
 
         """
         p1, p2 = self._chipP1P2(chipLabel)
-        
-        subSections = int(chipLabel[2]) # FR8-XX -> 8
 
         rects = p.rectSubPatches(p1, p2, subSections, colors)
         return rects
 
-    # Plot methods
 
     def _addChipLabelText(self, fig, ax, chipLabel):
 
@@ -120,6 +130,8 @@ class waferPlotter_PAM4(_waferPlotter):
             ha = 'center',
             va = 'center')
 
+
+    # Plot methods
 
     def _plot(self, patches:list,
             rangeMin, rangeMax,
@@ -288,3 +300,26 @@ class waferPlotter_PAM4(_waferPlotter):
             barLabel = colorbarLabel,
             printLabels = False
             )
+
+
+class waferPlotter_PAM4(_waferPlotter):
+
+    def __init__(self):
+
+        super().__init__(waferMaskLabel='Bilbao', allowedGroups=['DR4', 'DR8', 'FR4', 'FR8'])
+    
+    def _chipSubPatches(self, chipLabel:str, colors:list = None):
+        """Returns a list of rectangles (possibily colored) that fill the space
+        of a chip on the wafer.
+        
+        The number of sub-sections is determined from the kind of chip.
+        DR4/FR4 -> 4
+        DR8/FR8 -> 4
+        
+        If "colors" is passed, it must be a list as long as the number of
+        subsections. "colors" may contain colors or None.
+
+        """
+        
+        subSections = int(chipLabel[2]) # FR8-XX -> 8
+        return super()._chipSubPatches(chipLabel, subSections, colors)
