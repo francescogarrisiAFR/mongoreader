@@ -82,7 +82,19 @@ class waferCollation(c.collation):
 
     def refresh(self):
         """Refreshes all the components from the database."""
-        raise NotImplementedError()
+        
+        self.wafer.mongoRefresh(self.connection)
+        log.spare(f'Refreshed wafer "{self.wafer.name}".')
+
+        with opened(self.connection):
+            for chip in self.chips:
+                chip.mongoRefresh(self.connection)
+        log.spare(f'Refreshed chips.')
+
+        with opened(self.connection):
+            for bar in self.bars:
+                bar.mongoRefresh(self.connection)
+        log.spare(f'Refreshed bars.')
 
 
     # ---------------------------------------------------
