@@ -8,9 +8,42 @@ from mongomanager.errors import DocumentNotFound
 
 
 class waferCollation(c.collation):
+    """A waferCollation is a class used to collect from the database a wafer
+    and its related components (typically chips, bars and test structures).
+    
+    The collation than has useful methods to extract and plot data from this
+    set of components.
+    
+    A generic waferCollation is not usually instanciated directly; instead,
+    for specific wafer types you should use the related sub-class.
+    For instance:
+        Bilbao -> waferCollation_CDM
+        Budapest -> waferCollation_PAM4
+        Cambridge -> waferCollation_Cambridge
+        Como -> waferCollation_Como
+    """
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
+            database:str = 'beLaboratory', collection:str = 'components',
+            *,
+            chipsCheckNumber:int = None,
+            barsCheckNumber:int = None,
+            chipsKeyCriterion:callable,
+            barsKeyCriterion:callable,
+            ):
+        """
+        connection: a mongoutils/mongomanager connection object.
+        waferName_orCmp_orID: the name of the wafer / a wafer component / 
+            its ID -- used to retrieve the wafer and the related components
+        database -- the database where to look into (def. 'beLaboratory')
+        collection -- the collection where to look into (def. 'components')
+
+        keyword arguments:
+            - chipsCheckNumber:int = None -- see .collectChips()
+            - barsCheckNumber:int = None -- see .collectBars()
+            - chipsKeyCriterion:callable -- see .defineChipsDict()
+            - barsKeyCriterion:callable -- see .defineBarsDict()
+        """
 
         if not isinstance(connection, mom.connection):
             raise TypeError('"connection" must be a mongomanager.connection object.')
@@ -21,12 +54,22 @@ class waferCollation(c.collation):
             self.wafer = waferName_orCmp_orID
         else:
             self.wafer = self.collectWafer(waferName_orCmp_orID, database, collection)
-        self.bars = self.collectBars()
-        self.chips = self.collectChips()
+
+        self.chips = self.collectChips(chipsCheckNumber)
+        self.bars = self.collectBars(barsCheckNumber)
+        
+        self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+        self.barsDict = self.defineBarsDict(barsKeyCriterion)
         
 
     def collectWafer(self, waferName_orID:str,
         database:str = 'beLaboratory', collection:str = 'components'):
+        """Retrieves the wafer component from the database.
+        
+        waferName_orID -- The name (string) or ID of the wafer to be retrieved.
+        database/collection (def. beLaboratory/components) -- where to look for 
+        it.
+        """
 
         if isinstance(waferName_orID, str):
 
@@ -50,8 +93,15 @@ class waferCollation(c.collation):
 
     
     def collectBars(self,
+        checkNumber:int = None,
         database:str = 'beLaboratory', collection:str = 'components'):
         """Queries the database for bar object whose parent component is the wafer."""
+
+        if checkNumber is not None:
+            if not isinstance(checkNumber, int):
+                raise TypeError('"checkNumber" must be a positive integer or None.')
+            if checkNumber < 0:
+                raise ValueError('"checkNumber" must be a positive integer or None.')
 
         wafID = self.wafer.ID
 
@@ -65,11 +115,31 @@ class waferCollation(c.collation):
         log.info(f'Collected {len(bars)} bars')
         for ind, bar in enumerate(bars):
             log.spare(f'   {ind}: {bar.name}')
+
+        if checkNumber is not None:
+            if len(bars) != checkNumber:
+                log.warning(f'I expected to find {checkNumber} bars. Instead, I found {len(bars)}.')
+
         return bars
 
 
-    def collectChips(self):
-        """Looks into the wafer children components to find the chips associated to the wafer."""
+    def collectChips(self, checkNumber:int = None):
+        """Looks into the wafer children components to find the chips associated
+        to the wafer.
+        
+        checkNumber (positive int) -- If passed, the method checks that the
+            number of retrieved chips is equal to checkNumber, and issues a
+            warning in case it is not.
+
+        Internally, the method calls .retrieveChildrenComponents() on the
+        collation's wafer.
+        """
+
+        if checkNumber is not None:
+            if not isinstance(checkNumber, int):
+                raise TypeError('"checkNumber" must be a positive integer or None.')
+            if checkNumber < 0:
+                raise ValueError('"checkNumber" must be a positive integer or None.')
 
         chips = self.wafer.retrieveChildrenComponents(self.connection)
 
@@ -77,8 +147,70 @@ class waferCollation(c.collation):
         for ind, chip in enumerate(chips):
             log.spare(f'   {ind}: {chip.name}')
 
+        if checkNumber is not None:
+            if len(chips) != checkNumber:
+                log.warning(f'I expected to find {checkNumber} chips. Instead, I found {len(chips)}.')
+
         return chips
         
+
+    def defineChipsDict(self, keyCriterion:callable):
+        """Used to define a dictionary with 'chipLabel': <chipComponent>
+        key-value pairs.
+        
+        keyCriterion: a function applied to the name (string) of the chip,
+            which returns the label to be used as the key of the dictionary.
+            By default, the dictionary should use the serial of the chip 
+            (without the wafer name), so for instance:
+            
+                chip name: "2DR0001_DR8-01"
+                keyCriterion: lambda s: s.split('_')[1]
+            
+                keyCriterion returns "DR8-01" and the dictionary would be
+                defined as 
+                {
+                    'DR8-01': <2DR0001_DR8-01 chip>
+                    'DR8-02': <2DR0001_DR8-02 chip>
+                    ...
+                }
+        """
+
+        if self.chips is None:
+            log.warning('Could not instanciate chipsDict as self.chips is None.')
+            return {}
+
+        return {keyCriterion(chip.name): chip for chip in self.chips}
+
+    def defineBarsDict(self, keyCriterion:callable):
+        """Used to define a dictionary with 'barLabel': <barComponent>
+        key-value pairs.
+        
+        keyCriterion: a function applied to the name (string) of the bar,
+            which returns the label to be used as the key of the dictionary.
+            By default, bars are labeled following the pattern:
+                <waferName>_Bar-A
+                <waferName>_Bar-B
+                <waferName>_Bar-C
+                ...
+            so, a possible keyCriterion would be:
+                keyCriterion: lambda s: s.rsplit('-', maxsplit = 1)[1]
+            
+                keyCriterion returns "A", "B", ... and the dictionary would be
+                defined as 
+                {
+                    'A': <<waferName>_Bar-A>
+                    'B': <<waferName>_Bar-B>
+                    ...
+                }
+        """
+
+        if self.bars is None:
+            log.warning('Could not instanciate barsDict as self.bars is None.')
+            return {}
+
+        return {keyCriterion(bar.name): bar for bar in self.bars}
+
+
 
     def refresh(self):
         """Refreshes all the components from the database."""
@@ -256,62 +388,6 @@ class waferCollation(c.collation):
                 self.printChipInfo(chip, printIDs)
         
 
-
-class waferCollation_CDM(waferCollation):
-    
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-        database:str = 'beLaboratory', collection:str = 'components'):
-    
-        super().__init__(connection, waferName_orCmp_orID, database, collection)
-
-        if len(self.bars) != 3:
-            log.warning(f'I expected to find 3 bars. Instead, I found {len(self.bars)}.')
-
-        if len(self.chips) != 39:
-            log.warning(f'I expected to find 39 chips. Instead, I found {len(self.chips)}.')
-
-        self.barsDict = self.defineBarsDict()
-        self.chipsDict = self.defineChipsDict()
-
-
-    def collectWafer(self, waferName:str,
-        database:str = 'beLaboratory', collection:str = 'components'):
-
-        log.debug('waferCollation_2CDM.collectWafer()')
-
-        wafer = super().collectWafer(waferName, database, collection)
-
-        if '2CDM' not in wafer.name:
-            log.warning(f'The collected wafer ("{wafer.name}") may not be a "2CDM" wafer.')
-    
-        return wafer
-
-    def defineBarsDict(self):
-
-        def _keyCriterion(bar):
-            return bar.name.split('-')[1]
-
-        if self.bars is None:
-            self.bars = self.collectBars()
-        
-        if self.bars is None:
-            return {}
-
-        return {_keyCriterion(bar): bar for bar in self.bars}
-
-    def defineChipsDict(self):
-
-        def _keyCriterion(chip):
-            return chip.name.split('_')[1]
-
-        if self.chips is None:
-            self.chips = self.collectChips()
-
-        if self.chips is None:
-            return {}
-
-        return {_keyCriterion(chip): chip for chip in self.chips}
-
     # Must find a better name!
     def chipsRetrieveData(self, goggleFunction):
 
@@ -321,77 +397,59 @@ class waferCollation_CDM(waferCollation):
         return returnDict
 
 
+class waferCollation_Bilbao(waferCollation):
+    """Actually "Bilbao"."""
 
-class waferCollation_PAM4(waferCollation):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+        database:str = 'beLaboratory', collection:str = 'components'):
+    
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=39,
+            barsCheckNumber=3,
+            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+        )
+
+        if '2CDM' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Bilbao" wafer.')
+
+
+class waferCollation_Budapest(waferCollation):
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
             database:str = 'beLaboratory', collection:str = 'components'):
         
-        super().__init__(connection, waferName_orCmp_orID, database, collection)
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=69,
+            barsCheckNumber=6,
+            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+        )
 
-        if len(self.bars) != 6:
-            log.warning(f'I expected to find 6 bars. Instead, I found {len(self.bars)}.')
-
-        if len(self.chips) != 69:
-            log.warning(f'I expected to find 69 chips. Instead, I found {len(self.bars)}.')
-
-        self.barsDict = self.defineBarsDict()
-        self.chipsDict = self.defineChipsDict()
-
+        if '2DR' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Budapest" wafer.')
 
 
+class waferCollation_Cambridge(waferCollation):
 
-    def collectWafer(self, waferName:str,
-        database:str = 'beLaboratory', collection:str = 'components'):
-
-        log.debug('waferCollation_2DR8.collectWafer()')
-
-        wafer = super().collectWafer(waferName, database, collection)
-
-        if '2DR' not in wafer.name:
-            log.warning(f'The collected wafer ("{wafer.name}") may not be a "2DR" wafer.')
-    
-        return wafer
-
-    def defineBarsDict(self):
-
-        def _keyCriterion(bar):
-            return bar.name.split('-')[1]
-
-        if self.bars is None:
-            self.bars = self.collectBars()
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+            database:str = 'beLaboratory', collection:str = 'components'):
         
-        if self.bars is None:
-            return {}
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=63,
+            barsCheckNumber=7,
+            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+        )
 
-        return {_keyCriterion(bar): bar for bar in self.bars}
+        # if '2DR' not in self.wafer.name:
+        #     log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "PAM4" wafer.')
 
-    def defineChipsDict(self):
+class waferCollation_Como(waferCollation):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+            database:str = 'beLaboratory', collection:str = 'components'):
 
-        def _keyCriterion(chip):
-            return chip.name.split('_')[1]
-
-        if self.chips is None:
-            self.chips = self.collectChips()
-
-        if self.chips is None:
-            return {}
-
-        return {_keyCriterion(chip): chip for chip in self.chips}
-
-    # Must find a better name!
-    def chipsRetrieveData(self, goggleFunction):
-
-        returnDict = {key: goggleFunction(chip)
-                for key, chip in self.chipsDict.items()}
-
-        return returnDict
-        
-
-
-class waferCollation_DR8(waferCollation):
-    pass
-
+            raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
 
 def _statusString(component):
