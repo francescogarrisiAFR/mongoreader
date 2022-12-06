@@ -8,7 +8,7 @@ import mongoreader.wafers as morw
 from numpy import random
 
 
-conn = mom.connection('R&D', 'Francesco')
+conn = mom.connection('R&D', 'rdlab')
 
 wafer = morw.waferCollation_PAM4(conn, '2DR0009')
 

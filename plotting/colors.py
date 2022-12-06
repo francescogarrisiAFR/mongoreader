@@ -71,7 +71,8 @@ def floatColor(data:float, colormap, rangeMin:float, rangeMax:float,
     return colormap(x)
 
 
-def floatRanges(data:list):
+def autoFloatRanges(data:list):
+    """Returns a rangeMin, rangeMax tuple given a list of float/int/None."""
 
     def clData(data):
         cleanData = deepcopy(data)
@@ -96,12 +97,15 @@ def floatsColors(data:list, colormapName:str = None,
     NoneColor = None,
     clipLowColor = None,
     clipHighColor = None):
+    """Assigns colors to a list of float/int/None.
+    
+    Returns a list of colors followed by the min and max float values (range) used for the conversion."""
 
     if not isinstance(data, list):
         raise TypeError('"data" must be a list of float/int/None.')
 
     if rangeMin is None or rangeMax is None:
-        autoRangeMin, autoRangeMax = floatRanges(data)
+        autoRangeMin, autoRangeMax = autoFloatRanges(data)
         if rangeMin is None:
             rangeMin = autoRangeMin
         if rangeMax is None:
@@ -187,26 +191,13 @@ def stringsColors(strings:list, colormapName:str = None, NoneColor = None):
     return colorList
     
 
-def randomColor():
+def randomColor(opacity = 1):
     """Returns a random color as a 4-tuple; the first three elements are 0 to 1
-    random float numbers. The last element is 1."""
+    random float numbers. The last element (opacity) is set to "opacity" (def. 
+    1)."""
 
-    return (random.random(), random.random(), random.random(), 1)
+    return (random.random(), random.random(), random.random(), opacity)
 
-
-
-def rawColorbar(rangeMin, rangeMax, colormapName:str = None):
-
-    if colormapName is None:
-        colormap = get_cmap()
-    else:
-        colormap = get_cmap(colormapName)
-
-    norm = mpl.colors.Normalize(vmin=rangeMin, vmax=rangeMax)
-
-    mappable = mpl.cm.ScalarMappable(norm=norm, cmap=colormap)
-
-    return colormap, norm, mappable
 
 def addColorBar(fig, ax, label, rangeMin, rangeMax, colormapName:str = None):
     

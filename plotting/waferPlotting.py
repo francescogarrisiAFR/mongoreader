@@ -265,7 +265,7 @@ class _waferPlotter:
         for dic in dataDict.values():
             allData+= list(dic.values())
 
-        rangeMin, rangeMax = c.floatRanges(allData)
+        rangeMin, rangeMax = c.autoFloatRanges(allData)
 
         if dataRangeMin is not None:
             rangeMin = dataRangeMin
