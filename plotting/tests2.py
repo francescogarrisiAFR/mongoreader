@@ -11,7 +11,7 @@ import mongoreader.wafers as morw
 
 conn = mom.connection('R&D', 'rdlab')
 
-wc = morw.waferCollation_PAM4(conn, '2DR0014')
+wc = morw.waferCollation_Budapest(conn, '2DR0014')
 wp = wplt.waferPlotter_PAM4()
 
 def goggleMeasure(chip, measureName:str):
