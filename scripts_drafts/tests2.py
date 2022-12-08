@@ -42,10 +42,10 @@ def dataDict(measureName:str, waferCollation):
     dataDict = {key: val for key, val in dataDict.items() if val is not None}
     return dataDict
 
-measName = 'R termination'
-measUnit = 'Ω'
+measName = 'IL'
+measUnit = 'dB'
 
 wp.plotData_subchipScale(dataDict(measName, wc), dataType = 'float',
                         title = f'Test plot {measName}', waferName = wc.wafer.name,
                         colormapName = 'inferno', colorbarLabel = f'{measName} [{measUnit}]',
-                        chipGroups = None)
+                        chipGroups = ['DR8'])
