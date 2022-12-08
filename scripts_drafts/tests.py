@@ -10,9 +10,9 @@ from numpy import random
 
 conn = mom.connection('R&D', 'rdlab')
 
-wafer = morw.waferCollation_PAM4(conn, '2DR0009')
+wafer = morw.waferCollation_Budapest(conn, '2DR0009')
 
-w = wplt.waferPlotter_PAM4()
+w = wplt.waferPlotter_Budapest()
 
 
  # %%

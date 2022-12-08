@@ -302,7 +302,7 @@ class _waferPlotter:
             )
 
 
-class waferPlotter_PAM4(_waferPlotter):
+class waferPlotter_Budapest(_waferPlotter):
 
     def __init__(self):
 
