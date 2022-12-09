@@ -45,7 +45,9 @@ def rectPatch(p1, p2, fillColor = None, linewidth = 1):
 
 
 def rectSubPatches(p1, p2, subSections = 2, colors:list = None,
-    direction:str = 'V', linewidth = 1):
+    direction:str = 'V', linewidth = 1,
+    *,
+    reversedDirection:bool = False):
 
     if not isinstance(subSections, int):
         raise TypeError('"subSections" must be a positive integer (not 0).')
@@ -64,7 +66,11 @@ def rectSubPatches(p1, p2, subSections = 2, colors:list = None,
     x1, x2, y1, y2, _, _ = _unpackP12(p1, p2)
 
     if direction == 'V':
-        ys = list(linspace(y1, y2, subSections + 1))
+
+        ystart = max(y1, y2)
+        ystop = min(y1, y2)
+        ys = list(linspace(ystart, ystop, subSections + 1))
+        if reversedDirection: ys = reversed(ys)
         y1s = ys[:-1]
         y2s = ys[1:]
         p1s = [[x1, y] for y in y1s]
@@ -72,7 +78,10 @@ def rectSubPatches(p1, p2, subSections = 2, colors:list = None,
        
 
     elif direction == 'H':
-        xs = list(linspace(x1, x2, subSections + 1))
+        xstart = min(x1, x2)
+        xstop = max(x1, x2)
+        xs = list(linspace(xstart, xstop, subSections + 1))
+        if reversedDirection: xs = reversed(xs)
         x1s = xs[:-1]
         x2s = xs[1:]
         p1s = [[x, y1] for x in x1s]
