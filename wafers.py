@@ -1,5 +1,6 @@
 import mongomanager as mom
 import mongoreader.core as c
+import mongoreader.plotting.waferPlotting as wplt
 
 from mongoutils import isID
 from mongoutils.connections import opened
@@ -414,6 +415,18 @@ class waferCollation_Bilbao(waferCollation):
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Bilbao" wafer.')
 
 
+    def plotChipStatus(self):
+
+        dataDict = {}
+        for chip in self.chips:
+            dataDict[chip.name.split('_')[1]] = chip.status
+            
+        plt = wplt.waferPlotter_Bilbao()
+        plt.plotData_chipScale(dataDict, dataType = 'string',
+            title = 'Chip status',
+            colormapName='rainbow',
+            waferName = self.wafer.name)
+
 class waferCollation_Budapest(waferCollation):
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
@@ -428,6 +441,18 @@ class waferCollation_Budapest(waferCollation):
 
         if '2DR' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Budapest" wafer.')
+
+    def plotChipStatus(self):
+
+        dataDict = {}
+        for chip in self.chips:
+            dataDict[chip.name.split('_')[1]] = chip.status
+            
+        plt = wplt.waferPlotter_Budapest()
+        plt.plotData_chipScale(dataDict, dataType = 'string',
+            title = 'Chip status',
+            colormapName='rainbow',
+            waferName = self.wafer.name)
 
 
 class waferCollation_Cambridge(waferCollation):

@@ -2,7 +2,7 @@ import json
 import csv
 from pathlib import Path
 
-csvpath = Path(__file__).parent / 'BilbaoCoordinates.csv'
+csvpath = Path(__file__).parent / 'BudapestCoordinates.csv'
 
 # This list maps the raw of the csv file with the serial number on chip
 

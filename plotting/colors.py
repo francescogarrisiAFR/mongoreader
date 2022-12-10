@@ -3,13 +3,69 @@
 import matplotlib as mpl
 import matplotlib.patches as ptch
 
-from numpy import linspace, random
+from numpy import linspace, random, pi
 from copy import deepcopy
 from matplotlib.pyplot import get_cmap
 
 from mongomanager import log
 
 DEFAULT_NONE_COLOR = (0.8,0.8,0.8,1)
+
+
+class color:
+
+    def __init__(self, *args):
+
+        if len(args) == 1:
+            
+            if isinstance(args[0], str):
+                pass
+
+            elif isinstance(args[0], float) or isinstance(args[0], int):
+                c = args[0]
+
+                if c > 1 or c < 0:
+                    raise ValueError('Color values (r, g, b, a) must be between 0 and 1.')
+
+                self.r = c
+                self.g = c
+                self.b = c
+                self.a = 1
+
+            else:
+                raise TypeError('Color values must be integers/float or a string')
+
+        elif len(args) == 3:
+
+            if any([arg < 0 or arg > 1 for arg in args]):
+                raise ValueError('Color values (r, g, b, a) must be between 0 and 1.')
+
+            self.r = args[0]
+            self.g = args[1]
+            self.b = args[2]
+            self.a = 1
+
+        elif len(args) == 4:
+
+            if any([arg < 0 or arg > 1 for arg in args]):
+                raise ValueError('Color values (r, g, b, a) must be between 0 and 1.')
+
+            self.r = args[0]
+            self.g = args[1]
+            self.b = args[2]
+            self.a = args[3]
+
+
+        else:
+            raise TypeError(f'color() takes 1, 3 or 4 positional arguments but {len(args)} were given')
+
+
+    def __repr__(self) -> str:
+        return f'color{str(self.tuple())}'
+
+    def tuple(self):
+        return (self.r, self.g, self.b, self.a)
+        
 
 def boolColor(data:bool, TrueColor = 'Red', FalseColor = 'Blue', NoneColor = None):
 
@@ -116,8 +172,10 @@ def floatsColors(data:list, colormapName:str = None,
             rangeMax = autoRangeMax
 
     if colormapName is None:
-        colormap = get_cmap()
+        print('Debug: RAINBOW')
+        colormap = get_cmap('rainbow')
     else:
+        print(f'Debug: {colormapName}')
         colormap = get_cmap(colormapName)
 
     return [floatColor(d, colormap, rangeMin, rangeMax,
@@ -158,7 +216,10 @@ def colorPalette(colormap, colorsNum):
     "colormap" is a matplotlib color map. See matplotlib.pyplot.get_cmap()
     """
 
+    step = 0.45*pi
     values = linspace(0, 1, colorsNum)
+    values = [(n/step)%1 for n in range(colorsNum)]
+
     return [colormap(val) for val in values]
 
 
@@ -178,7 +239,8 @@ def colorDictFromStrings(colormap, strings:list):
     colorDict = {s: c for s, c in zip(stringsSet, palette)}
     return colorDict
 
-def stringsColors(strings:list, colormapName:str = None, NoneColor = None):
+def stringsColors(strings:list, colormapName:str = None, NoneColor = None,
+        colorDict:dict = None):
     """Returns a list of colors given a list of strings/None at the input"""
 
     # Automatically determining the color palette
@@ -187,8 +249,8 @@ def stringsColors(strings:list, colormapName:str = None, NoneColor = None):
     else:
         colormap = get_cmap(colormapName)
 
-    
-    colorDict = colorDictFromStrings(colormap, strings)
+    if colorDict is None:
+        colorDict = colorDictFromStrings(colormap, strings)
 
     colorList = [colorDict[s] if s in colorDict else NoneColor
                     for s in strings]

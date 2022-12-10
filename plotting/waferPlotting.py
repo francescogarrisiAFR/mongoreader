@@ -142,6 +142,7 @@ class _waferPlotter:
     def _plot(self, patches:list,
             rangeMin, rangeMax,
             colormapName,
+            *,
             printBar:bool = True,
             barLabel:str = None,
             legendDict:dict = None,
@@ -150,10 +151,13 @@ class _waferPlotter:
             waferName:str = None,
             printDate:bool = True,
             printLabels:bool = True,
+            dpi = None
             ):
         """This is the main function used to realize wafer-plots."""
 
-        plt.figure(dpi = 200, figsize = (10, 10))
+        if dpi is None: dpi = 200
+
+        plt.figure(dpi = dpi, figsize = (10, 10))
         fig, ax = plt.subplots() # note we must use plt.subplots, not plt.subplot
         fig.set_size_inches(10, 10, forward=True)
         
@@ -199,6 +203,90 @@ class _waferPlotter:
         return fig, ax
 
 
+    def _allChipSubpatches(self, dataDict:dict,
+        dataType:str,
+        dataRangeMin:float = None,
+        dataRangeMax:float = None,
+        colormapName:str = None,
+        colorDict:dict = None,
+        NoneColor = c.DEFAULT_NONE_COLOR,
+        clippingLowColor = None,
+        clippingHighColor = None,
+        chipGroups:list = None,
+        ):
+        """Returns all the subpatches to be plotted by _plot."""
+        pass
+
+        rangeMin, rangeMax = None, None
+
+        if dataType == 'float':
+            # Determining ranges
+            rangeMin, rangeMax = autoRangeDataDict(dataDict,
+                    dataRangeMin, dataRangeMax)
+
+        plotLabels = self._chipGroupLabels(chipGroups)
+
+        subchipPatches = []
+        for chipLabel in plotLabels:
+            if chipLabel in dataDict:
+
+                chipValues = list(dataDict[chipLabel].values())
+                if chipValues == []:
+                    continue
+                    
+                if dataType == 'float':
+                    chipColors, _, _ = c.floatsColors(chipValues, colormapName,
+                        rangeMin, rangeMax, NoneColor,
+                        clippingLowColor, clippingHighColor)
+
+                elif dataType == 'string':
+                    log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
+                    chipColors, colorDict = c.stringsColors(chipValues, colormapName, NoneColor, colorDict)
+
+                subPatches = self._chipSubPatches(chipLabel, chipColors)
+                subchipPatches += subPatches
+
+            
+        return subchipPatches, rangeMin, rangeMax, colorDict
+
+
+    def _allChipPatches(self, dataDict:dict,
+        dataType:str,
+        dataRangeMin:float = None,
+        dataRangeMax:float = None,
+        colormapName:str = None,
+        colorDict:dict = None,
+        NoneColor = c.DEFAULT_NONE_COLOR,
+        clippingLowColor = None,
+        clippingHighColor = None):
+        """Returns all the chip patches to be plotted by _plot."""
+    
+        rangeMin, rangeMax = None, None
+
+        if dataType == 'float':
+            # Determining ranges
+            rangeMin, rangeMax = autoRangeDataDict(dataDict,
+                    dataRangeMin, dataRangeMax)
+        
+
+        chipLabels = list(dataDict.keys())
+        chipValues = list(dataDict.values())
+        
+
+        if dataType == 'float':
+            chipColors, _, _ = c.floatsColors(chipValues, colormapName,
+                rangeMin, rangeMax, NoneColor,
+                clippingLowColor, clippingHighColor)
+        elif dataType == 'string':
+            # log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
+            chipColors, colorDict = c.stringsColors(chipValues,
+                colormapName, NoneColor, colorDict)
+
+        chipPatches = [self._chipPatch(lab, col)
+                    for lab, col in zip (chipLabels, chipColors)]
+
+        return chipPatches, rangeMin, rangeMax, colorDict
+
     # Mid level plotting methods
 
     def plotData_chipScale(self, dataDict:dict, title:str = None, *, 
@@ -206,10 +294,15 @@ class _waferPlotter:
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = c.DEFAULT_NONE_COLOR,
+        colorDict:dict = None,
+        clippingHighColor = None,
+        clippingLowColor = None,
+        BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
-        colorbarLabel:str = None):
+        colorbarLabel:str = None,
+        dpi = None):
         """This is the main function used to plot data at chip-scale.
 
         It is assuemed dataDict is in the form:
@@ -226,27 +319,50 @@ class _waferPlotter:
         if not isinstance(dataDict, dict):
             raise TypeError('"dataDict" must be a dictionary.')
 
+        if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
+        if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)
+
+         # Generating patches
         plotLabels = self._chipGroupLabels(chipGroups)
+        backChipPatches = [self._chipPatch(l, BackColor) for l in plotLabels
+                if l not in dataDict]
 
-        if dataType == 'float':
-
-            # for label in plotLabels:
-            values = [dataDict[key] if key in dataDict else None
-                            for key in plotLabels]
-
-            colors, rangeMin, rangeMax = c.floatsColors(values, colormapName, dataRangeMin, dataRangeMax, NoneColor)
-            colorsDict = {key: col for key, col in zip(plotLabels, colors)}
-
-            chipPatches = [self._chipPatch(l, c) for l, c in colorsDict.items()]
+        chipPatches, rangeMin, rangeMax, colorDict = \
+            self._allChipPatches(dataDict, dataType,
+                dataRangeMin, dataRangeMax,
+                colormapName, colorDict, NoneColor,
+                clippingLowColor, clippingHighColor)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
+        allPatches += backChipPatches
         allPatches += chipPatches
 
+        # Plot settings
+
+        legendDict = {'Data n/a': NoneColor}
+        if clippingLowColor is not None:
+            legendDict['Under-range'] = clippingLowColor
+        if clippingHighColor is not None:
+            legendDict['Over-range'] = clippingHighColor
+
+        if dataType == 'float':
+            printBar = True
+
+        if dataType == 'string':
+            printBar = False
+            for string, color in colorDict.items():
+                legendDict[string] = color
+            
+        # Plotting
         self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
             waferName = waferName,
+            legendDict=legendDict,
+            printBar = printBar,
             barLabel = colorbarLabel,
+            printLabels = False,
+            dpi = dpi
             )
 
 
@@ -258,13 +374,15 @@ class _waferPlotter:
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = c.DEFAULT_NONE_COLOR,
+        colorDict:dict = None,
         clippingHighColor = None,
         clippingLowColor = None,
         BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
-        colorbarLabel:str = None):
+        colorbarLabel:str = None,
+        dpi = None):
         """This is the main function used to plot data on a sub-chip scale.
                 
         Arguments:
@@ -314,64 +432,20 @@ class _waferPlotter:
         if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
         if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)
 
+        # Generating patches
         plotLabels = self._chipGroupLabels(chipGroups)
-
-
         chipPatches = [self._chipPatch(l, BackColor) for l in plotLabels]
-        subchipPatches = []
-        rangeMin, rangeMax = None, None
 
-        if dataType == 'float':
-
-            # Determining ranges
-            allData = []
-            for dic in dataDict.values():
-                newValues = list(dic.values())
-                allData+= normalizeFloatData(newValues)
-
-            rangeMin, rangeMax = c.autoFloatRanges(allData)
-
-            if dataRangeMin is not None:
-                rangeMin = dataRangeMin
-
-            if dataRangeMax is not None:
-                rangeMax = dataRangeMax
-
-            # Generating sub patches
-            for chipLabel in plotLabels:
-                if chipLabel in dataDict:
-
-                    chipValues = list(dataDict[chipLabel].values())
-
-                    if chipValues == []:
-                        continue
-                        
-                    chipColors, _, _ = c.floatsColors(chipValues, colormapName,
-                        rangeMin, rangeMax, NoneColor,
-                        clippingLowColor, clippingHighColor)
-                    subPatches = self._chipSubPatches(chipLabel, chipColors)
-                    subchipPatches += subPatches
-
-                else:
-                    pass
-
-        elif dataType == 'string':
-
-            # Generating sub patches
-            for chipLabel in plotLabels:
-                if chipLabel in dataDict:
-                    chipStrings = list(dataDict[chipLabel].values())
-                    
-                    # Type checks
-                    for el in chipStrings:
-                        if el is not None:
-                            if not isinstance(el, str):
-                                raise TypeError('When using dataType = "string", data can only be strings or None.')
-
-                    chipColors, colorDict = c.stringsColors(chipStrings, colormapName, NoneColor)
-
-                    subPatches = self._chipSubPatches(chipLabel, chipColors)
-                    subchipPatches += subPatches
+        subchipPatches, rangeMin, rangeMax, colorDict = \
+            self._allChipSubpatches(dataDict,
+                dataType,
+                dataRangeMin, dataRangeMax,
+                colormapName,
+                colorDict,
+                NoneColor,
+                clippingLowColor,
+                clippingHighColor,
+                chipGroups)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += chipPatches
@@ -393,7 +467,7 @@ class _waferPlotter:
             for string, color in colorDict.items():
                 legendDict[string] = color
             
-
+        # Plotting
         self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
@@ -402,10 +476,34 @@ class _waferPlotter:
             printBar = printBar,
             barLabel = colorbarLabel,
             printLabels = False,
+            dpi = dpi
             )
 
 
 class waferPlotter_Budapest(_waferPlotter):
+
+    def __init__(self):
+
+        super().__init__(waferMaskLabel='Budapest', allowedGroups=['DR4', 'DR8', 'FR4', 'FR8'])
+    
+    def _chipSubPatches(self, chipLabel:str, colors:list = None):
+        """Returns a list of rectangles (possibily colored) that fill the space
+        of a chip on the wafer.
+        
+        The number of sub-sections is determined from the kind of chip.
+        DR4/FR4 -> 4
+        DR8/FR8 -> 4
+        
+        If "colors" is passed, it must be a list as long as the number of
+        subsections. "colors" may contain colors or None.
+
+        """
+        
+        subSections = int(chipLabel[2]) # FR8-XX -> 8
+        return super()._chipSubPatches(chipLabel, subSections, colors)
+
+
+class waferPlotter_Bilbao(_waferPlotter):
 
     def __init__(self):
 
@@ -424,7 +522,11 @@ class waferPlotter_Budapest(_waferPlotter):
 
         """
         
-        subSections = int(chipLabel[2]) # FR8-XX -> 8
+        if 'MZ' in chipLabel:
+            subSections = 1
+        elif 'SE' in chipLabel or 'DF' in chipLabel:
+            subSections = 4
+
         return super()._chipSubPatches(chipLabel, subSections, colors)
 
 
@@ -452,3 +554,37 @@ def normalizeFloatData(dataList:list):
         newData.append(data)
 
     return newData
+
+
+def autoRangeDataDict(dataDict:dict,
+        userRangeMin:float = None, userRangeMax:float = None):
+
+    if isinstance(userRangeMin, int):
+        userRangeMin = float(userRangeMin)
+
+    if isinstance(userRangeMax, int):
+        userRangeMax = float(userRangeMax)
+
+    # Determining ranges
+    allData = []
+    for value in dataDict.values():
+        
+        if isinstance(value, dict): # subchip-scale
+            newValues = list(value.values())
+            allData+= newValues
+        else: # chip-scale
+            allData.append(value)
+        
+    allData = normalizeFloatData(allData)
+    rangeMin, rangeMax = c.autoFloatRanges(allData)
+
+    if userRangeMin is not None:
+        rangeMin = userRangeMin
+    
+    if userRangeMax is not None:
+        rangeMax = userRangeMax
+    
+    if rangeMin > rangeMax:
+        return rangeMax, rangeMin
+    else:
+        return rangeMin, rangeMax
