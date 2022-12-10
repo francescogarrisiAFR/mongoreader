@@ -192,7 +192,7 @@ def stringsColors(strings:list, colormapName:str = None, NoneColor = None):
 
     colorList = [colorDict[s] if s in colorDict else NoneColor
                     for s in strings]
-    return colorList
+    return colorList, colorDict
     
 
 def randomColor(opacity = 1):
@@ -239,7 +239,13 @@ def addLegend(fig, legendDict = None, legendFontSize = None):
             raise ValueError('"legendDict" cannot contain None as color.')
 
 
+    # -------------------------------------
     # Settings and parameters
+
+    # position of legend axes
+
+    axes_x = -0.1
+    axes_y = 0.1
 
     # Size of legend axes
     w = 0.2
@@ -254,6 +260,7 @@ def addLegend(fig, legendDict = None, legendFontSize = None):
     text_x = 0.3
     
 
+    # -------------------------------------
     # Functions
 
     def addSquare(ax, x, y, faceColor, squareSize = squareSize):
@@ -276,10 +283,11 @@ def addLegend(fig, legendDict = None, legendFontSize = None):
         ax.text(x, y, text, fontsize = legendFontSize)
 
 
+    # -------------------------------------
     # Bulk of the function
     
     # Adding legend axes
-    ax = fig.add_axes([-0.1,0.1, w, h])
+    ax = fig.add_axes([axes_x, axes_y, w, h])
     ax.axis('off') # Disabling frame
 
     

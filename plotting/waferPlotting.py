@@ -142,13 +142,15 @@ class _waferPlotter:
     def _plot(self, patches:list,
             rangeMin, rangeMax,
             colormapName,
+            printBar:bool = True,
             barLabel:str = None,
             legendDict:dict = None,
             legendFontSize = None,
             title:str = None,
             waferName:str = None,
             printDate:bool = True,
-            printLabels:bool = True):
+            printLabels:bool = True,
+            ):
         """This is the main function used to realize wafer-plots."""
 
         plt.figure(dpi = 200, figsize = (10, 10))
@@ -186,7 +188,8 @@ class _waferPlotter:
             ax.text(0, 1.05*self.D/2, title, fontsize = 24, ha = 'center')
         plt.autoscale(enable=True, axis='both')
 
-        c.addColorBar(fig, ax, barLabel, rangeMin, rangeMax, colormapName)
+        if printBar:
+            c.addColorBar(fig, ax, barLabel, rangeMin, rangeMax, colormapName)
 
         if legendDict is not None:
             c.addLegend(fig, legendDict, legendFontSize)
@@ -255,42 +258,54 @@ class _waferPlotter:
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = c.DEFAULT_NONE_COLOR,
+        clippingHighColor = None,
+        clippingLowColor = None,
         BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None):
         """This is the main function used to plot data on a sub-chip scale.
-        
-        For instance, this function can be used to plot [...]
-        
+                
         Arguments:
             - dataDict: the dictionary containing the data
             - title (string): the title of the plot
         
         Keyword arguments:
-            - dataType (string): the kind of data to be plotted. Currently,
-                only "float" is supported.
+            - dataType (string): the kind of data to be plotted. Can be "float"
+                or "string".
             - dataRangeMin (float) [optional]: The minimum value to be plotted.
+                Valid for dataType = "float"
             - dataRangeMax (float) [optional]: The maximum value to be plotted.
+                Valid for dataType = "float"
             - NoneColor (3-tuple or None): The color used to plot None data
+            - clippingHighColor [optional]: color used when data exceed
+                dataRangeMax. Valid for dataType = "float"
+            - clippingHighColor [optional]: color used when data exceed
+                dataRangeMin. Valid for dataType = "float"
             - chipGroups (list of Strings): if passed, it only shows chips for
-                the given group. Allowed values: "DR4", "DR8", "FR4", "FR8"
+                the given group.
+                For Budapest wafers, allowed values are: "DR4", "DR8", "FR4",
+                    "FR8"
             - waferName (string) [optional]: The name of the wafer to be shown
             - colormapName (string) [optional]: a matplotlib colormap name
             - colorbarLabel (string) [optional]: the label of the bar legend.
+                Valid for dataType = "float"
         
-        Data dict has to be properly formatted.
-        In particular, for subchipScale, float data:
+        Data dict has to be properly formatted, following the pattern:
         {
-            'DR8-01': {'loc1': <data>, 'loc2': <data>, ...},
+            <chipLabel>: {'loc1': <data>, 'loc2': <data>, ...},
             ...
         }
-        <data> can be a float or None
+        where <chipLabel> must correspond to the chips defined on the wafer
+        maskset, while <data> can be a float or None.
         For each chip, the number of location/data pairs must correspond to the
         number of MZs on chip (e.g. DR8 -> 8 location/data pairs).
-        The chip labels must correspond to the chips defined on the Bilbao 
-        maskset.
+
+        If a <chipLabel> is missing, plotData_subchipScale() only shows the
+        outer boundary of the chip; pass a dictionary with None values to show
+        that data is missing
+        e.g. <chipLabel>: {'loc1': None, 'loc2': None, ...},
         """
 
         if not isinstance(dataDict, dict):
@@ -304,21 +319,25 @@ class _waferPlotter:
 
         chipPatches = [self._chipPatch(l, BackColor) for l in plotLabels]
         subchipPatches = []
-
-        # Determining ranges
-        allData = []
-        for dic in dataDict.values():
-            allData+= list(dic.values())
-
-        rangeMin, rangeMax = c.autoFloatRanges(allData)
-
-        if dataRangeMin is not None:
-            rangeMin = dataRangeMin
-
-        if dataRangeMax is not None:
-            rangeMax = dataRangeMax
+        rangeMin, rangeMax = None, None
 
         if dataType == 'float':
+
+            # Determining ranges
+            allData = []
+            for dic in dataDict.values():
+                newValues = list(dic.values())
+                allData+= normalizeFloatData(newValues)
+
+            rangeMin, rangeMax = c.autoFloatRanges(allData)
+
+            if dataRangeMin is not None:
+                rangeMin = dataRangeMin
+
+            if dataRangeMax is not None:
+                rangeMax = dataRangeMax
+
+            # Generating sub patches
             for chipLabel in plotLabels:
                 if chipLabel in dataDict:
 
@@ -327,26 +346,62 @@ class _waferPlotter:
                     if chipValues == []:
                         continue
                         
-                    chipColors, _, _ = c.floatsColors(chipValues, colormapName, rangeMin, rangeMax, NoneColor)
+                    chipColors, _, _ = c.floatsColors(chipValues, colormapName,
+                        rangeMin, rangeMax, NoneColor,
+                        clippingLowColor, clippingHighColor)
                     subPatches = self._chipSubPatches(chipLabel, chipColors)
                     subchipPatches += subPatches
 
                 else:
                     pass
 
+        elif dataType == 'string':
+
+            # Generating sub patches
+            for chipLabel in plotLabels:
+                if chipLabel in dataDict:
+                    chipStrings = list(dataDict[chipLabel].values())
+                    
+                    # Type checks
+                    for el in chipStrings:
+                        if el is not None:
+                            if not isinstance(el, str):
+                                raise TypeError('When using dataType = "string", data can only be strings or None.')
+
+                    chipColors, colorDict = c.stringsColors(chipStrings, colormapName, NoneColor)
+
+                    subPatches = self._chipSubPatches(chipLabel, chipColors)
+                    subchipPatches += subPatches
+
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += chipPatches
         allPatches += subchipPatches
 
+        # Plot settings
+
         legendDict = {'Data n/a': NoneColor}
+        if clippingLowColor is not None:
+            legendDict['Under-range'] = clippingLowColor
+        if clippingHighColor is not None:
+            legendDict['Over-range'] = clippingHighColor
+
+        if dataType == 'float':
+            printBar = True
+
+        if dataType == 'string':
+            printBar = False
+            for string, color in colorDict.items():
+                legendDict[string] = color
+            
 
         self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
             waferName = waferName,
             legendDict=legendDict,
+            printBar = printBar,
             barLabel = colorbarLabel,
-            printLabels = False
+            printLabels = False,
             )
 
 
@@ -371,3 +426,29 @@ class waferPlotter_Budapest(_waferPlotter):
         
         subSections = int(chipLabel[2]) # FR8-XX -> 8
         return super()._chipSubPatches(chipLabel, subSections, colors)
+
+
+
+def normalizeFloatData(dataList:list):
+    """Converts integer found within dataList to float;
+    float and None are left unchanged.
+    
+    Raises TypeError if dataList is not a list.
+    Raises ValueError if elements of dataList are not float, integers or None.
+    """
+
+    if not isinstance(dataList, list):
+        raise TypeError('"dataList" must be a list of float, integers or None.')
+
+    newData = []
+    for data in dataList:
+        if isinstance(data, int):
+            data = float(data)
+        
+        if data is not None:
+            if not isinstance(data, float):
+                raise ValueError('"dataList" must be a list of float, integers or None.')
+        
+        newData.append(data)
+
+    return newData
