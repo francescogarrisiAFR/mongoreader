@@ -1,3 +1,4 @@
+from mongomanager import log
 import matplotlib.pyplot as plt
 import matplotlib.patches as ptch
 from numpy import pi, linspace, arccos, sin, cos
@@ -25,7 +26,9 @@ def waferPatch(D:float, notch:float = None, linewidth = 2):
 
 def rectPatch(p1, p2, fillColor = None, linewidth = 1):
 
-    _,_,_,_, width, height = _unpackP12(p1, p2)
+    x0, _, y0, _, width, height = _unpackP12(p1, p2)
+
+    p = (x0, y0)
 
     if fillColor is None:
         color = None
@@ -34,8 +37,7 @@ def rectPatch(p1, p2, fillColor = None, linewidth = 1):
         color = fillColor
         fill = True
         
-
-    patch = ptch.Rectangle(p1, width, height,
+    patch = ptch.Rectangle(p, width, height,
             edgecolor = 'black',
             facecolor=color,
             lw = linewidth,
@@ -86,12 +88,13 @@ def rectSubPatches(p1, p2, subSections = 2, colors:list = None,
         x2s = xs[1:]
         p1s = [[x, y1] for x in x1s]
         p2s = [[x, y2] for x in x2s]
-    
+
     if colors is None:
         colors = [None for _ in range(p1s)]
     
     rects = [rectPatch(p1, p2, c, linewidth = linewidth)
                 for p1, p2, c in zip(p1s, p2s, colors)]
+
     return rects
 
 

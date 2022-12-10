@@ -1,9 +1,13 @@
 """This module contains functions that assign colors to data"""
 
 import matplotlib as mpl
+import matplotlib.patches as ptch
+
 from numpy import linspace, random
 from copy import deepcopy
 from matplotlib.pyplot import get_cmap
+
+from mongomanager import log
 
 DEFAULT_NONE_COLOR = (0.8,0.8,0.8,1)
 
@@ -218,3 +222,79 @@ def addColorBar(fig, ax, label, rangeMin, rangeMax, colormapName:str = None):
     return fig, ax
 
     
+def addLegend(fig, legendDict = None, legendFontSize = None):
+
+    # Arguments checks
+
+    if legendDict is not None:
+        if not isinstance(legendDict, dict):
+            raise TypeError('"legendDict" must be a dictionary.')
+
+    if legendDict is None: legendDict = {}
+
+    if legendFontSize is None: legendFontSize = 15
+
+    for text, color in legendDict.items():
+        if color is None:
+            raise ValueError('"legendDict" cannot contain None as color.')
+
+
+    # Settings and parameters
+
+    # Size of legend axes
+    w = 0.2
+    h = 0.8
+    ar = h/w
+
+    # squares and text
+
+    _rows = 15 # Numbers of rows in the legend. Determines the spacing
+    squareSize = 0.1
+    square_x = 0.1
+    text_x = 0.3
+    
+
+    # Functions
+
+    def addSquare(ax, x, y, faceColor, squareSize = squareSize):
+
+        realw = squareSize
+        realh = squareSize/ar
+
+        rect = ptch.Rectangle((x,y), realw, realh,
+                edgecolor = 'black',
+                facecolor = faceColor,
+                # lw = linewidth,
+                # fill=fill
+                )
+
+        # rect = ptch.Rectangle()
+
+        ax.add_patch(rect)
+
+    def addText(ax, x, y, text:str):
+        ax.text(x, y, text, fontsize = legendFontSize)
+
+
+    # Bulk of the function
+    
+    # Adding legend axes
+    ax = fig.add_axes([-0.1,0.1, w, h])
+    ax.axis('off') # Disabling frame
+
+    
+    _ys = linspace(0.9, 0.1, _rows)
+
+    for ind, (text, color) in enumerate(legendDict.items()):
+
+        log.debug(f'[addLegend] Adding color "{color}" with label "{text}"')
+
+        y = _ys[ind]
+        xsq = square_x
+        xtxt = text_x
+
+        addSquare(ax, xsq, y, color, squareSize)
+        addText(ax, xtxt, y, text)
+
+
+    return fig

@@ -11,6 +11,8 @@ import datetime as dt
 from mongoreader.plotting import patches as p
 from mongoreader.plotting import colors as c
 
+from mongomanager import log
+
 from pathlib import Path
 from numpy import random, linspace
 
@@ -90,6 +92,8 @@ class _waferPlotter:
         p1 = p12["p1"]
         p2 = p12["p2"]
 
+        log.debug(f'[_chipP1P2] "{chipLabel}" p1: {p1} - p2: {p2}')
+
         return p1, p2
 
     def _chipPatch(self, chipLabel:str, color = None):
@@ -114,6 +118,8 @@ class _waferPlotter:
         """
         p1, p2 = self._chipP1P2(chipLabel)
 
+        log.debug(f'[_chipSubPatches] {chipLabel}: {p1} - {p2}')
+
         rects = p.rectSubPatches(p1, p2, subSections, colors)
         return rects
 
@@ -137,9 +143,10 @@ class _waferPlotter:
             rangeMin, rangeMax,
             colormapName,
             barLabel:str = None,
+            legendDict:dict = None,
+            legendFontSize = None,
             title:str = None,
             waferName:str = None,
-            
             printDate:bool = True,
             printLabels:bool = True):
         """This is the main function used to realize wafer-plots."""
@@ -181,6 +188,9 @@ class _waferPlotter:
 
         c.addColorBar(fig, ax, barLabel, rangeMin, rangeMax, colormapName)
 
+        if legendDict is not None:
+            c.addLegend(fig, legendDict, legendFontSize)
+
         plt.show()
 
         return fig, ax
@@ -192,7 +202,7 @@ class _waferPlotter:
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
-        NoneColor = None,
+        NoneColor = c.DEFAULT_NONE_COLOR,
         chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
@@ -236,28 +246,63 @@ class _waferPlotter:
             barLabel = colorbarLabel,
             )
 
+
         # print(f'DEBUG: {rangeMin}')
         # print(f'DEBUG: {rangeMax}')
-        # fig, ax = c.addColorBar(fig, ax, rangeMin, rangeMax, colormapName)
-
 
     def plotData_subchipScale(self, dataDict, title:str = None, *,
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
-        NoneColor = None,
+        NoneColor = c.DEFAULT_NONE_COLOR,
+        BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None):
+        """This is the main function used to plot data on a sub-chip scale.
+        
+        For instance, this function can be used to plot [...]
+        
+        Arguments:
+            - dataDict: the dictionary containing the data
+            - title (string): the title of the plot
+        
+        Keyword arguments:
+            - dataType (string): the kind of data to be plotted. Currently,
+                only "float" is supported.
+            - dataRangeMin (float) [optional]: The minimum value to be plotted.
+            - dataRangeMax (float) [optional]: The maximum value to be plotted.
+            - NoneColor (3-tuple or None): The color used to plot None data
+            - chipGroups (list of Strings): if passed, it only shows chips for
+                the given group. Allowed values: "DR4", "DR8", "FR4", "FR8"
+            - waferName (string) [optional]: The name of the wafer to be shown
+            - colormapName (string) [optional]: a matplotlib colormap name
+            - colorbarLabel (string) [optional]: the label of the bar legend.
+        
+        Data dict has to be properly formatted.
+        In particular, for subchipScale, float data:
+        {
+            'DR8-01': {'loc1': <data>, 'loc2': <data>, ...},
+            ...
+        }
+        <data> can be a float or None
+        For each chip, the number of location/data pairs must correspond to the
+        number of MZs on chip (e.g. DR8 -> 8 location/data pairs).
+        The chip labels must correspond to the chips defined on the Bilbao 
+        maskset.
+        """
 
         if not isinstance(dataDict, dict):
             raise TypeError('"dataDict" must be a dictionary.')
 
+        if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
+        if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)
+
         plotLabels = self._chipGroupLabels(chipGroups)
 
 
-        chipPatches = [self._chipPatch(l, 'White') for l in plotLabels]
+        chipPatches = [self._chipPatch(l, BackColor) for l in plotLabels]
         subchipPatches = []
 
         # Determining ranges
@@ -293,10 +338,13 @@ class _waferPlotter:
         allPatches += chipPatches
         allPatches += subchipPatches
 
+        legendDict = {'Data n/a': NoneColor}
+
         self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
             waferName = waferName,
+            legendDict=legendDict,
             barLabel = colorbarLabel,
             printLabels = False
             )
