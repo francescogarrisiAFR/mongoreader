@@ -11,7 +11,12 @@ import datetime as dt
 from mongoreader.plotting import patches as p
 from mongoreader.plotting import colors as c
 
-from mongomanager import log
+from mongomanager import (
+        log,
+        waferBlueprint,
+        importWaferBlueprint,
+        isID
+)
 
 from pathlib import Path
 from numpy import random, linspace
@@ -22,50 +27,26 @@ class _waferPlotter:
     """This class should not be instantiated directly, but only through its sub-classes"""
 
 
-    def __init__(self, notch = None, *,
-        waferMaskLabel:str,
-        allowedGroups:list = None):
+    def __init__(self, connection, notch = None, *,
+        waferBP: waferBlueprint):
 
-        if not isinstance(waferMaskLabel, str):
-            raise TypeError('"waferMaskLabel" must be a string.')
+        if not isinstance(waferBP, waferBlueprint):
+            raise TypeError('"waferBP" must be a mongomanager.waferBlueprint object.')
+        
+        self.waferBP = waferBP
+        self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
+        self.allowedGroups = waferBP.getWaferChipGroupNames()
+        self.allChipLabels = waferBP.getWaferChipSerials()
 
-        if allowedGroups is not None:
-            if not isinstance(allowedGroups, list):
-                raise TypeError('"allowedGroups" must be a list of strings or None.')
-            
-            for el in allowedGroups:
-                if not isinstance(el, str):
-                    raise ValueError('"allowedGroups" must be a list of strings or None.')
-
+        # Should be retrieved from waferBP's "geometry" field.
         self.D = 101.6 # Wafer plot diameter in mm
         if notch is None:
             self.notch = 5.0
 
-        self.waferMaskLabel = waferMaskLabel
-        self.waferSizes = self._retrieveObjectsSizes(waferMaskLabel)
-        self.allowedGroups = allowedGroups
-
-    def _retrieveObjectsSizes(self, waferMaskLabel):
-
-        if waferMaskLabel is None:
-            return
-
-        try:
-            path = Path(__file__).parent / 'waferSizes.json'
-            print(path)
-            with open(path, 'r') as file:
-                dimensions = json.load(file)
-
-            return dimensions[waferMaskLabel]
-
-        except FileNotFoundError:
-            print('Warning: Dimensions file not found!')
-            return None
-
     def _chipGroupLabels(self, groups:list):
 
         if groups is None:
-            return list(self.waferSizes['chips'].keys())
+            return self.allChipLabels
 
         allowedGroupString = ', '.join([f'"{g}"' for g in self.allowedGroups])
 
@@ -78,20 +59,20 @@ class _waferPlotter:
 
         labels = []
         for group in groups:
-            labels += [key for key in self.waferSizes['chips'] if group in key]
+            labels += self.waferBP.getWaferChipSerials(group)
         return labels
         
     
     def _chipP1P2(self, chipLabel:str):
         """Returnes the p1-p2 pairs of points that identify chip rectangles on wafer."""
 
-        if not chipLabel in self.waferSizes['chips']:
+        if not chipLabel in self.allChipLabels:
             raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
         
-        p12 = self.waferSizes['chips'][chipLabel]
+        p12 = self.chipP1P2s[chipLabel] # um
 
-        p1 = p12["p1"]
-        p2 = p12["p2"]
+        p1 = list(map(lambda x: float(x)/1000, p12["p1"])) # um to mm
+        p2 = list(map(lambda x: float(x)/1000, p12["p2"])) # um to mm
 
         log.debug(f'[_chipP1P2] "{chipLabel}" p1: {p1} - p2: {p2}')
 
@@ -105,7 +86,7 @@ class _waferPlotter:
         return p.rectPatch(p1, p2, color)
 
     
-    def _chipSubPatches(self, chipLabel:str, subSections:int, colors:list = None):
+    def _chipSubPatches(self, chipLabel:str, colors:list = None):
         """Returns a list of rectangles (possibily colored) that fill the space
         of a chip on the wafer.
         
@@ -118,24 +99,53 @@ class _waferPlotter:
 
         """
         p1, p2 = self._chipP1P2(chipLabel)
+        
+        subSections = len(colors)
 
         log.debug(f'[_chipSubPatches] {chipLabel}: {p1} - {p2}')
-
+        log.debug(f'[_chipSubPatches] subSections: {subSections}')
+        log.debug(f'[_chipSubPatches] colors: {colors}')
+        
         rects = p.rectSubPatches(p1, p2, subSections, colors)
         return rects
 
 
-    def _addChipLabelText(self, fig, ax, chipLabel):
+    def _addChipLabelText(self, fig, ax, chipLabel:str, direction:str = None):
+
+        if direction is not None:
+            if not isinstance(direction, str):
+                raise TypeError('"direction" must be None or a string among "North", "East", "South", "West".')
 
         p1, p2 = self._chipP1P2(chipLabel)
         x0, x1, y0, y1, width, height = p._unpackP12(p1, p2)
 
         textx = x0+width/2
         texty = y0+height/2
+        ha = 'center'
+        va = 'center'
+
+        if direction is not None:
+
+            if direction == 'North':
+                texty += 0.8*height
+
+            elif direction == 'South':
+                texty -= 0.8*height
+
+            elif direction == 'East':
+                textx = x1 + 0.2*width
+                ha = 'left'
+
+            elif direction == 'West':
+                textx = x0 - 0.2*width
+                ha = 'right'
+            
+            else:
+                raise ValueError('"direction" is not among "North", "East", "South", "West".')
 
         ax.text(textx, texty, chipLabel, fontsize = 10,
-            ha = 'center',
-            va = 'center')
+            ha = ha,
+            va = va)
 
 
     # Plot methods
@@ -144,6 +154,7 @@ class _waferPlotter:
             rangeMin, rangeMax,
             colormapName,
             *,
+            chipGroups:list = None,
             printBar:bool = True,
             barLabel:str = None,
             legendDict:dict = None,
@@ -152,6 +163,7 @@ class _waferPlotter:
             waferName:str = None,
             printDate:bool = True,
             printLabels:bool = True,
+            labelsDirection:str = None,
             dpi = None
             ):
         """This is the main function used to realize wafer-plots."""
@@ -167,8 +179,8 @@ class _waferPlotter:
         
         # Chip labels:
         if printLabels:
-            for label in self.waferSizes['chips'].keys():
-                self._addChipLabelText(fig, ax, label)
+            for label in self._chipGroupLabels(chipGroups):
+                self._addChipLabelText(fig, ax, label, direction = labelsDirection)
 
         # Wafer name
         if waferName is not None:
@@ -210,14 +222,15 @@ class _waferPlotter:
         dataRangeMax:float = None,
         colormapName:str = None,
         colorDict:dict = None,
-        NoneColor = c.DEFAULT_NONE_COLOR,
+        NoneColor = None,
         clippingLowColor = None,
         clippingHighColor = None,
         chipGroups:list = None,
         ):
         """Returns all the subpatches to be plotted by _plot."""
-        pass
 
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+        
         rangeMin, rangeMax = None, None
 
         if dataType == 'float':
@@ -244,6 +257,10 @@ class _waferPlotter:
                     log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
                     chipColors, colorDict = c.stringsColors(chipValues, colormapName, NoneColor, colorDict)
 
+                elif dataType == 'bool':
+                    raise NotImplementedError('Bool data plotting is not yet implemented.')
+
+
                 subPatches = self._chipSubPatches(chipLabel, chipColors)
                 subchipPatches += subPatches
 
@@ -257,10 +274,12 @@ class _waferPlotter:
         dataRangeMax:float = None,
         colormapName:str = None,
         colorDict:dict = None,
-        NoneColor = c.DEFAULT_NONE_COLOR,
+        NoneColor = None,
         clippingLowColor = None,
         clippingHighColor = None):
         """Returns all the chip patches to be plotted by _plot."""
+    
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
     
         rangeMin, rangeMax = None, None
 
@@ -282,6 +301,9 @@ class _waferPlotter:
             # log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
             chipColors, colorDict = c.stringsColors(chipValues,
                 colormapName, NoneColor, colorDict)
+        elif dataType == 'bool':
+            raise NotImplementedError('Bool data plotting is not yet implemented.')
+
 
         chipPatches = [self._chipPatch(lab, col)
                     for lab, col in zip (chipLabels, chipColors)]
@@ -294,7 +316,7 @@ class _waferPlotter:
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
-        NoneColor = c.DEFAULT_NONE_COLOR,
+        NoneColor = None,
         colorDict:dict = None,
         clippingHighColor = None,
         clippingLowColor = None,
@@ -304,6 +326,7 @@ class _waferPlotter:
         colormapName:str = None,
         colorbarLabel:str = None,
         printChipLabels = False,
+        chipLabelsDirection:str = None,
         dpi = None,
         ):
         """This is the main function used to plot data at chip-scale.
@@ -365,6 +388,7 @@ class _waferPlotter:
             printBar = printBar,
             barLabel = colorbarLabel,
             printLabels = printChipLabels,
+            labelsDirection = chipLabelsDirection,
             dpi = dpi,
             )
 
@@ -376,7 +400,7 @@ class _waferPlotter:
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
-        NoneColor = c.DEFAULT_NONE_COLOR,
+        NoneColor = None,
         colorDict:dict = None,
         clippingHighColor = None,
         clippingLowColor = None,
@@ -386,6 +410,7 @@ class _waferPlotter:
         colormapName:str = None,
         colorbarLabel:str = None,
         printChipLabels = False,
+        chipLabelsDirection:str = None,
         dpi = None):
         """This is the main function used to plot data on a sub-chip scale.
                 
@@ -413,6 +438,12 @@ class _waferPlotter:
             - colormapName (string) [optional]: a matplotlib colormap name
             - colorbarLabel (string) [optional]: the label of the bar legend.
                 Valid for dataType = "float"
+            - printChipLabels (bool, def. False): If True, chip labels are
+                printed
+            - chipLabelsDirection (string | None) [optional]: If "East",
+                "West", "North" or "South" it displaces the chip labels to the
+                side of the chip.
+            - dpi (number): if passed, it changes the dpi setting of matplotlib
         
         Data dict has to be properly formatted, following the pattern:
         {
@@ -457,6 +488,9 @@ class _waferPlotter:
 
         # Plot settings
 
+        if NoneColor is None:
+            NoneColor = c.DEFAULT_NONE_COLOR
+
         legendDict = {'Data n/a': NoneColor}
         if clippingLowColor is not None:
             legendDict['Under-range'] = clippingLowColor
@@ -475,64 +509,15 @@ class _waferPlotter:
         self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
+            chipGroups = chipGroups,
             waferName = waferName,
             legendDict=legendDict,
             printBar = printBar,
             barLabel = colorbarLabel,
             printLabels = printChipLabels,
+            labelsDirection = chipLabelsDirection,
             dpi = dpi
             )
-
-
-class waferPlotter_Budapest(_waferPlotter):
-
-    def __init__(self):
-
-        super().__init__(waferMaskLabel='Budapest', allowedGroups=['DR4', 'DR8', 'FR4', 'FR8'])
-    
-    def _chipSubPatches(self, chipLabel:str, colors:list = None):
-        """Returns a list of rectangles (possibily colored) that fill the space
-        of a chip on the wafer.
-        
-        The number of sub-sections is determined from the kind of chip.
-        DR4/FR4 -> 4
-        DR8/FR8 -> 4
-        
-        If "colors" is passed, it must be a list as long as the number of
-        subsections. "colors" may contain colors or None.
-
-        """
-        
-        subSections = int(chipLabel[2]) # FR8-XX -> 8
-        return super()._chipSubPatches(chipLabel, subSections, colors)
-
-
-class waferPlotter_Bilbao(_waferPlotter):
-
-    def __init__(self):
-
-        super().__init__(waferMaskLabel='Bilbao', allowedGroups=['DR4', 'DR8', 'FR4', 'FR8'])
-    
-    def _chipSubPatches(self, chipLabel:str, colors:list = None):
-        """Returns a list of rectangles (possibily colored) that fill the space
-        of a chip on the wafer.
-        
-        The number of sub-sections is determined from the kind of chip.
-        DR4/FR4 -> 4
-        DR8/FR8 -> 4
-        
-        If "colors" is passed, it must be a list as long as the number of
-        subsections. "colors" may contain colors or None.
-
-        """
-        
-        if 'MZ' in chipLabel:
-            subSections = 1
-        elif 'SE' in chipLabel or 'DF' in chipLabel:
-            subSections = 4
-
-        return super()._chipSubPatches(chipLabel, subSections, colors)
-
 
 
 def normalizeFloatData(dataList:list):
@@ -595,17 +580,24 @@ def autoRangeDataDict(dataDict:dict,
 
 
 
-def waferPlotter(maskSet:str):
+def waferPlotter(connection, maskSet:str):
+
+    blueprintIDs = {
+        'Bilbao': None,
+        'Budapest': '6398434725e51a373ac387fb', # "Budapest wafer"
+        'Cambridge': None,
+        'Como': None
+    }
+    masksetString = ', '.join([f'"{m}"' for m in blueprintIDs.keys()])
+
 
     if not isinstance(maskSet, str):
         raise TypeError('"maskSet" must be a string.')
-    
-    if maskSet == 'Bilbao':
-        return waferPlotter_Bilbao()
-    
-    elif maskSet == 'Budapest':
-        return waferPlotter_Budapest()
+    if not maskSet in blueprintIDs.keys():
+        raise TypeError(f'"maskSet" must be among {masksetString}.')
 
-    else:
-        maskStrings = ', '.join(['"Bilbao"', '"Budapest"'])
-        raise ValueError(f'"maskSet" is not among the allowed strings ({maskStrings}).')
+    ID = blueprintIDs[maskSet]
+
+    waferBP = importWaferBlueprint(ID, connection)
+
+    return _waferPlotter(connection, waferBP = waferBP)

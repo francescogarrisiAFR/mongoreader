@@ -1,5 +1,5 @@
 import mongomanager as mom
-import mongomanager.info as i
+# import mongomanager.info as i
 import mongoreader.core as c
 import mongoreader.plotting.waferPlotting as wplt
 import mongoreader.gogglesFunctions as gf
@@ -32,6 +32,7 @@ class waferCollation(c.collation):
             *,
             waferMaskLabel:str = None,
             chipsCheckNumber:int = None,
+            chipBlueprintCheckNumber:int = None,
             barsCheckNumber:int = None,
             chipsKeyCriterion:callable,
             barsKeyCriterion:callable,
@@ -60,7 +61,7 @@ class waferCollation(c.collation):
         else:
             self.wafer = self.collectWafer(waferName_orCmp_orID, database, collection)
 
-        # self.waferBlueprint = self.collectWaferBlueprint(self.wafer)
+        self.waferBlueprint = self.collectWaferBlueprint()
         
         if not isinstance(waferMaskLabel, str):
             raise TypeError('"waferMaskLabel" must be a string.')
@@ -69,6 +70,8 @@ class waferCollation(c.collation):
         self.bars = self.collectBars(barsCheckNumber)
         
         self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+        self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
+        
         self.barsDict = self.defineBarsDict(barsKeyCriterion)
         
         self.waferMaskLabel = waferMaskLabel
@@ -170,17 +173,33 @@ class waferCollation(c.collation):
         
         Raises DocumentNotFound if the blueprint is not found."""
 
-        bp = self.wafer.retrieveBlueprint(self.connection)
-        if bp is None:
+        wbp = self.wafer.retrieveWaferBlueprint(self.connection)
+        if wbp is None:
             raise DocumentNotFound('Could not retrieve the wafer blueprint.')
 
-        return bp
+        log.info(f'Collected wafer blueprint "{wbp.name}".')
+        return wbp
 
-    def collectChipBlueprints(self):
+    def collectChipBlueprints(self, checkNumber:int = None):
         
-        pass
+        bpDict = {serial: 
+                mom.importOpticalChipBlueprint(chip.blueprintID,
+                    self.connection)
+            for serial, chip in self.chipsDict.items()}
 
+        differentIDs = set()
+        for ser, bp in bpDict.items():
+            if bp is None:
+                raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{ser}".')
+            differentIDs.add(mom.toStringID(bp.ID))
 
+        if checkNumber is not None:
+            if len(differentIDs) != checkNumber:
+                log.warning(f'I expected to find {checkNumber} different blueprints. Instead, I found {len(differentIDs)}.')
+
+        log.info(f'Collected {len(differentIDs)} different chip blueprints.')
+
+        return bpDict
 
     def defineChipsDict(self, keyCriterion:callable):
         """Used to define a dictionary with 'chipLabel': <chipComponent>
@@ -249,6 +268,9 @@ class waferCollation(c.collation):
         self.wafer.mongoRefresh(self.connection)
         log.spare(f'Refreshed wafer "{self.wafer.name}".')
 
+        self.waferBlueprint.mongoRefresh(self.connection)
+        log.spare(f'Refreshed waferBlueprint "{self.waferBlueprint.name}".')
+
         with opened(self.connection):
             for chip in self.chips:
                 chip.mongoRefresh(self.connection)
@@ -263,64 +285,85 @@ class waferCollation(c.collation):
     # ---------------------------------------------------
     # Data retrieval methods
 
-    def locationDict(self, chipType:str):
-
-        if not isinstance(chipType, str):
-            raise TypeError('"chipType" must be a string.')
-
-        types = i.waferRelations\
-            .waferRelationsDict[self.waferMaskLabel]['chipTypes']
-
-        if not chipType in types:
-            raise ValueError(f'"chipType" ("{chipType}") is not among the allowed ones for {self.waferMaskLabel} ({", ".join(types)}).')
-
-        locDict = i.opticalChips.locationsDict[chipType]
-        return locDict
-
 
     def retrieveDatasheetData(self,
         resultName:str,
-        chipType:str,
-        locationKey:str):
+        chipGroup_orGroups,
+        locationGroup:str):
 
-        selectedChipsDict = {key: chip
-            for key, chip in self.chipsDict.items()
-            if chipType in key
-            }
+        if isinstance(chipGroup_orGroups, list):
+            chipGroups = chipGroup_orGroups
+        else:
+            chipGroups = [chipGroup_orGroups]
+        
+        chipSerials = []
+        for group in chipGroups:
+            print(f'DEBUG: group {group}')
+            chipSerials += self.waferBlueprint.getWaferChipSerials(group)
+        
+        locationDict = {}
+        for serial in chipSerials:
+            chipBp = self.chipBPdict[serial]
+            locNames = chipBp.getLocationNames(locationGroup)
+            locationDict[serial] = locNames
 
-        locNumber = len(self.locationDict(chipType)[locationKey])
-        log.debug(f'[retrieveDatasheetData] Number of locations: {locNumber}')
-
-        dataDict = {key: chipGoggles.datasheedData(chip,
-            resultName, locationKey, locNumber)
-            for key, chip in selectedChipsDict.items()}
+        dataDict = {serial: chipGoggles.datasheedData(
+                        self.chipsDict[serial],
+                        resultName,
+                        locationDict[serial])
+            for serial in chipSerials}
 
         return dataDict
 
 
     def plotDatasheetData(self,
         resultName:str,
-        chipType:str,
-        locationKey:str,
+        chipGroup_orGroups,
+        locationGroup:str,
         *,
         dataType:str,
+        colormapName:str = None,
         dataRangeMin:float = None,
-        dataRangeMax:float = None):
+        dataRangeMax:float = None,
+        NoneColor = None,
+        clippingHighColor = None,
+        clippingLowColor = None,
+        BackColor = 'White',
+        colorbarLabel:str = None,
+        printChipLabels:bool = False,
+        chipLabelsDirection:str = None,
+        dpi = None
+        ):
 
-        plt = wplt.waferPlotter(self.waferMaskLabel)
-
+        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+    
         dataDict = self.retrieveDatasheetData(
             resultName,
-            chipType,
-            locationKey
+            chipGroup_orGroups,
+            locationGroup
         )
+        
+        if isinstance(chipGroup_orGroups, str):
+            chipGroups = [chipGroup_orGroups]
+        else:
+            chipGroups = chipGroup_orGroups
 
         plt.plotData_subchipScale(dataDict,
             title = resultName,
             dataType=dataType,
+            NoneColor = NoneColor,
+            colormapName=colormapName,
             dataRangeMin = dataRangeMin,
             dataRangeMax = dataRangeMax,
-            waferName = self.wafer.name
+            clippingHighColor = clippingHighColor,
+            clippingLowColor = clippingLowColor,
+            BackColor = BackColor,
+            waferName = self.wafer.name,
+            chipGroups = chipGroups,
+            colorbarLabel = colorbarLabel,
+            printChipLabels = printChipLabels,
+            chipLabelsDirection = chipLabelsDirection,
+            dpi = dpi,
             )
 
 
@@ -495,6 +538,7 @@ class waferCollation_Bilbao(waferCollation):
         super().__init__(connection, waferName_orCmp_orID, database, collection,
             chipsCheckNumber=39,
             barsCheckNumber=3,
+            chipBlueprintCheckNumber = 3,
             chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
             barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
             waferMaskLabel = 'Bilbao'
@@ -541,6 +585,7 @@ class waferCollation_Budapest(waferCollation):
         
         super().__init__(connection, waferName_orCmp_orID, database, collection,
             chipsCheckNumber=69,
+            chipBlueprintCheckNumber = 4,
             barsCheckNumber=6,
             chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
             barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
@@ -556,7 +601,7 @@ class waferCollation_Budapest(waferCollation):
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.status
             
-        plt = wplt.waferPlotter(self.waferMaskLabel)
+        plt = wplt.waferPlotter(self.connection, 'Budapest')
         plt.plotData_chipScale(dataDict, dataType = 'string',
             title = 'Chip status',
             colormapName='rainbow',

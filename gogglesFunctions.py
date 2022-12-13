@@ -9,8 +9,19 @@ class chipGoggleFunctions:
     def scoopResultsFromTestEntry(
             testEntry:dict,
             resultName:str,
-            locationKey:str = None,
+            locationNames:str = None,
             searchDatasheetReady:bool = True) -> list:
+
+        if not isinstance(resultName, str):
+            raise TypeError('"resultName" must be a string.')
+
+        if locationNames is not None:
+            if not isinstance(locationNames, list):
+                raise TypeError('"locationNames" must be a list of string.')
+
+            for name in locationNames:
+                if not isinstance(name, str):
+                    raise ValueError('"locationNames" must be a list of string.')
 
         found = []
 
@@ -25,8 +36,8 @@ class chipGoggleFunctions:
                 continue
 
             loc = res.get('location')
-            if locationKey is not None:
-                if loc is None or locationKey not in loc:
+            if locationNames is not None:
+                if loc is None or loc not in locationNames:
                     continue
 
             # If I arrived here, I found the right result
@@ -53,28 +64,30 @@ class chipGoggleFunctions:
     @classmethod
     def scoopResultsFromHistory(cls,
             testHistory:list,
-            resultName:str, 
-            locationKey:str,
+            resultName:list, 
+            locationNames:str,
             searchDatasheetReady:bool = True) -> dict:
 
         # allScooped is a list of list of dicts of the form
         #   {'data': <data>, 'location': <location>}
         allScooped = [cls.scoopResultsFromTestEntry(entry,
-            resultName, locationKey, searchDatasheetReady)
+            resultName, locationNames, searchDatasheetReady)
             for entry in reversed(testHistory)] # Most recent is scooped first
 
         while None in allScooped: allScooped.remove(None)
 
-        scoopedDict = {}
+        scoopedDict = {name: None for name in locationNames}
 
         for scooped in allScooped:
             for dic in scooped:
                 loc = dic['location']
-                if loc not in scoopedDict:
-                    scoopedDict[loc] = dic['data']
+                data = dic['data']
+
+                if data is not None and scoopedDict[loc] is None:
+                    scoopedDict[loc] = data
                 else:
                     pass # No data is added since it was already found
-        
+
         return scoopedDict
 
     @staticmethod
@@ -84,28 +97,11 @@ class chipGoggleFunctions:
     @classmethod
     def datasheedData(cls, chip,
             resultName:str,
-            locationKey:str,
-            locationsNumber:int):
+            locationNames:list):
     
-        if not isinstance(resultName, str):
-            raise TypeError('"measureName" must be a string.')
-
-        if not isinstance(locationKey, str):
-            raise TypeError('"locationKey" must be a string.')
-
-        if not isinstance(locationsNumber, int):
-            raise TypeError('"locationNumber" must be a positive integer')
-
-        if locationsNumber <= 0:
-            raise ValueError('"locationNumber" must be a positive integer')
-
-        expectedKeys = [f'{locationKey}{n+1}' for n in range(locationsNumber)]
-
         history = chip.getField('testHistory', valueIfNotFound = [], verbose = False)
         scoopedDict = cls.scoopResultsFromHistory(history,
-            resultName, locationKey, searchDatasheetReady=True)
+            resultName, locationNames, searchDatasheetReady=True)                       
 
-        dataDict = {key: scoopedDict.get(key) for key in expectedKeys}                        
-
-        return dataDict
+        return scoopedDict
     
