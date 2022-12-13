@@ -1,12 +1,15 @@
 import mongomanager as mom
+import mongomanager.info as i
 import mongoreader.core as c
 import mongoreader.plotting.waferPlotting as wplt
+import mongoreader.gogglesFunctions as gf
 
 from mongoutils import isID
 from mongoutils.connections import opened
 from mongomanager import log
 from mongomanager.errors import DocumentNotFound
 
+chipGoggles = gf.chipGoggleFunctions()
 
 class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer
@@ -27,6 +30,7 @@ class waferCollation(c.collation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
             database:str = 'beLaboratory', collection:str = 'components',
             *,
+            waferMaskLabel:str = None,
             chipsCheckNumber:int = None,
             barsCheckNumber:int = None,
             chipsKeyCriterion:callable,
@@ -56,12 +60,18 @@ class waferCollation(c.collation):
         else:
             self.wafer = self.collectWafer(waferName_orCmp_orID, database, collection)
 
+        # self.waferBlueprint = self.collectWaferBlueprint(self.wafer)
+        
+        if not isinstance(waferMaskLabel, str):
+            raise TypeError('"waferMaskLabel" must be a string.')
+
         self.chips = self.collectChips(chipsCheckNumber)
         self.bars = self.collectBars(barsCheckNumber)
         
         self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
         self.barsDict = self.defineBarsDict(barsKeyCriterion)
         
+        self.waferMaskLabel = waferMaskLabel
 
     def collectWafer(self, waferName_orID:str,
         database:str = 'beLaboratory', collection:str = 'components'):
@@ -155,6 +165,23 @@ class waferCollation(c.collation):
         return chips
         
 
+    def collectWaferBlueprint(self):
+        """Returns the wafer blueprint from self.wafer.
+        
+        Raises DocumentNotFound if the blueprint is not found."""
+
+        bp = self.wafer.retrieveBlueprint(self.connection)
+        if bp is None:
+            raise DocumentNotFound('Could not retrieve the wafer blueprint.')
+
+        return bp
+
+    def collectChipBlueprints(self):
+        
+        pass
+
+
+
     def defineChipsDict(self, keyCriterion:callable):
         """Used to define a dictionary with 'chipLabel': <chipComponent>
         key-value pairs.
@@ -174,6 +201,9 @@ class waferCollation(c.collation):
                     'DR8-02': <2DR0001_DR8-02 chip>
                     ...
                 }
+
+        chipLabel must correspond to the 'nameSerial' field of the
+        corresponding opticalChipBlueprint.
         """
 
         if self.chips is None:
@@ -232,6 +262,68 @@ class waferCollation(c.collation):
 
     # ---------------------------------------------------
     # Data retrieval methods
+
+    def locationDict(self, chipType:str):
+
+        if not isinstance(chipType, str):
+            raise TypeError('"chipType" must be a string.')
+
+        types = i.waferRelations\
+            .waferRelationsDict[self.waferMaskLabel]['chipTypes']
+
+        if not chipType in types:
+            raise ValueError(f'"chipType" ("{chipType}") is not among the allowed ones for {self.waferMaskLabel} ({", ".join(types)}).')
+
+        locDict = i.opticalChips.locationsDict[chipType]
+        return locDict
+
+
+    def retrieveDatasheetData(self,
+        resultName:str,
+        chipType:str,
+        locationKey:str):
+
+        selectedChipsDict = {key: chip
+            for key, chip in self.chipsDict.items()
+            if chipType in key
+            }
+
+        locNumber = len(self.locationDict(chipType)[locationKey])
+        log.debug(f'[retrieveDatasheetData] Number of locations: {locNumber}')
+
+        dataDict = {key: chipGoggles.datasheedData(chip,
+            resultName, locationKey, locNumber)
+            for key, chip in selectedChipsDict.items()}
+
+        return dataDict
+
+
+    def plotDatasheetData(self,
+        resultName:str,
+        chipType:str,
+        locationKey:str,
+        *,
+        dataType:str,
+        dataRangeMin:float = None,
+        dataRangeMax:float = None):
+
+        plt = wplt.waferPlotter(self.waferMaskLabel)
+
+        dataDict = self.retrieveDatasheetData(
+            resultName,
+            chipType,
+            locationKey
+        )
+
+        plt.plotData_subchipScale(dataDict,
+            title = resultName,
+            dataType=dataType,
+            dataRangeMin = dataRangeMin,
+            dataRangeMax = dataRangeMax,
+            waferName = self.wafer.name
+            )
+
+
 
     @staticmethod
     def chipSummaryDict(chip):
@@ -324,6 +416,9 @@ class waferCollation(c.collation):
         return dic
 
 
+    # ------------------------------------------
+    # Print methods
+
     @staticmethod
     def printWaferInfo(wafer, printIDs:bool = False):
 
@@ -389,13 +484,6 @@ class waferCollation(c.collation):
                 self.printChipInfo(chip, printIDs)
         
 
-    # Must find a better name!
-    def chipsRetrieveData(self, goggleFunction):
-
-        returnDict = {key: goggleFunction(chip)
-                for key, chip in self.chipsDict.items()}
-
-        return returnDict
 
 
 class waferCollation_Bilbao(waferCollation):
@@ -408,12 +496,29 @@ class waferCollation_Bilbao(waferCollation):
             chipsCheckNumber=39,
             barsCheckNumber=3,
             chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
+            waferMaskLabel = 'Bilbao'
         )
 
         if '2CDM' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Bilbao" wafer.')
 
+    
+    # -------------------------------
+    # Goggle methods
+
+
+    def goggleData(self, goggleFunction:callable):
+        pass
+
+
+    def goggleDatasheedData(self, resultName:str, locationKey:str = None):
+
+        pass
+
+
+    # -------------------------------
+    # Plot methods
 
     def plotChipStatus(self):
 
@@ -421,11 +526,13 @@ class waferCollation_Bilbao(waferCollation):
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.status
             
-        plt = wplt.waferPlotter_Bilbao()
+        plt = wplt.waferPlotter(self.waferMaskLabel)
         plt.plotData_chipScale(dataDict, dataType = 'string',
             title = 'Chip status',
             colormapName='rainbow',
-            waferName = self.wafer.name)
+            waferName = self.wafer.name,
+            printChipLabels = True,
+            )
 
 class waferCollation_Budapest(waferCollation):
 
@@ -436,7 +543,8 @@ class waferCollation_Budapest(waferCollation):
             chipsCheckNumber=69,
             barsCheckNumber=6,
             chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
+            waferMaskLabel = 'Budapest'
         )
 
         if '2DR' not in self.wafer.name:
@@ -448,11 +556,12 @@ class waferCollation_Budapest(waferCollation):
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.status
             
-        plt = wplt.waferPlotter_Budapest()
+        plt = wplt.waferPlotter(self.waferMaskLabel)
         plt.plotData_chipScale(dataDict, dataType = 'string',
             title = 'Chip status',
             colormapName='rainbow',
-            waferName = self.wafer.name)
+            waferName = self.wafer.name,
+            printChipLabels = True)
 
 
 class waferCollation_Cambridge(waferCollation):
@@ -464,7 +573,8 @@ class waferCollation_Cambridge(waferCollation):
             chipsCheckNumber=63,
             barsCheckNumber=7,
             chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1]
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
+            waferMaskLabel = 'Cambridge'
         )
 
         # if '2DR' not in self.wafer.name:
@@ -472,7 +582,8 @@ class waferCollation_Cambridge(waferCollation):
 
 class waferCollation_Como(waferCollation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
+            database:str = 'beLaboratory', collection:str = 'components',
+            waferMaskLabel = 'Como'):
 
             raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 

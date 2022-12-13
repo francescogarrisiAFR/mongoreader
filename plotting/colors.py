@@ -172,10 +172,8 @@ def floatsColors(data:list, colormapName:str = None,
             rangeMax = autoRangeMax
 
     if colormapName is None:
-        print('Debug: RAINBOW')
         colormap = get_cmap('rainbow')
     else:
-        print(f'Debug: {colormapName}')
         colormap = get_cmap(colormapName)
 
     return [floatColor(d, colormap, rangeMin, rangeMax,

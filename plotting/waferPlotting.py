@@ -41,6 +41,7 @@ class _waferPlotter:
         if notch is None:
             self.notch = 5.0
 
+        self.waferMaskLabel = waferMaskLabel
         self.waferSizes = self._retrieveObjectsSizes(waferMaskLabel)
         self.allowedGroups = allowedGroups
 
@@ -302,7 +303,9 @@ class _waferPlotter:
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None,
-        dpi = None):
+        printChipLabels = False,
+        dpi = None,
+        ):
         """This is the main function used to plot data at chip-scale.
 
         It is assuemed dataDict is in the form:
@@ -361,8 +364,8 @@ class _waferPlotter:
             legendDict=legendDict,
             printBar = printBar,
             barLabel = colorbarLabel,
-            printLabels = False,
-            dpi = dpi
+            printLabels = printChipLabels,
+            dpi = dpi,
             )
 
 
@@ -382,6 +385,7 @@ class _waferPlotter:
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None,
+        printChipLabels = False,
         dpi = None):
         """This is the main function used to plot data on a sub-chip scale.
                 
@@ -475,7 +479,7 @@ class _waferPlotter:
             legendDict=legendDict,
             printBar = printBar,
             barLabel = colorbarLabel,
-            printLabels = False,
+            printLabels = printChipLabels,
             dpi = dpi
             )
 
@@ -588,3 +592,20 @@ def autoRangeDataDict(dataDict:dict,
         return rangeMax, rangeMin
     else:
         return rangeMin, rangeMax
+
+
+
+def waferPlotter(maskSet:str):
+
+    if not isinstance(maskSet, str):
+        raise TypeError('"maskSet" must be a string.')
+    
+    if maskSet == 'Bilbao':
+        return waferPlotter_Bilbao()
+    
+    elif maskSet == 'Budapest':
+        return waferPlotter_Budapest()
+
+    else:
+        maskStrings = ', '.join(['"Bilbao"', '"Budapest"'])
+        raise ValueError(f'"maskSet" is not among the allowed strings ({maskStrings}).')
