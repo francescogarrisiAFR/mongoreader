@@ -600,6 +600,7 @@ class waferCollation_Budapest(waferCollation):
         dataDict = {}
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.status
+        log.debug(f'[plotChipStatus] {dataDict}')
             
         plt = wplt.waferPlotter(self.connection, 'Budapest')
         plt.plotData_chipScale(dataDict, dataType = 'string',

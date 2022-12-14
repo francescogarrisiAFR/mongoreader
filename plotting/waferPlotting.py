@@ -365,6 +365,8 @@ class _waferPlotter:
 
         # Plot settings
 
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+            
         legendDict = {'Data n/a': NoneColor}
         if clippingLowColor is not None:
             legendDict['Under-range'] = clippingLowColor
@@ -381,12 +383,12 @@ class _waferPlotter:
             
         # Plotting
         self._plot(allPatches, rangeMin, rangeMax,
-            colormapName,
             title = title,
             waferName = waferName,
             legendDict=legendDict,
             printBar = printBar,
             barLabel = colorbarLabel,
+            colormapName = colormapName,
             printLabels = printChipLabels,
             labelsDirection = chipLabelsDirection,
             dpi = dpi,
@@ -488,8 +490,7 @@ class _waferPlotter:
 
         # Plot settings
 
-        if NoneColor is None:
-            NoneColor = c.DEFAULT_NONE_COLOR
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
 
         legendDict = {'Data n/a': NoneColor}
         if clippingLowColor is not None:
