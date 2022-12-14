@@ -66,13 +66,14 @@ class waferCollation(c.collation):
         if not isinstance(waferMaskLabel, str):
             raise TypeError('"waferMaskLabel" must be a string.')
 
-        self.chips = self.collectChips(chipsCheckNumber)
-        self.bars = self.collectBars(barsCheckNumber)
+        with opened(connection):
+            self.chips = self.collectChips(chipsCheckNumber)
+            self.bars = self.collectBars(barsCheckNumber)
         
-        self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
-        self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
+            self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+            self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
         
-        self.barsDict = self.defineBarsDict(barsKeyCriterion)
+            self.barsDict = self.defineBarsDict(barsKeyCriterion)
         
         self.waferMaskLabel = waferMaskLabel
 
@@ -182,10 +183,11 @@ class waferCollation(c.collation):
 
     def collectChipBlueprints(self, checkNumber:int = None):
         
-        bpDict = {serial: 
+        with opened(self.connection):
+            bpDict = {serial: 
                 mom.importOpticalChipBlueprint(chip.blueprintID,
                     self.connection)
-            for serial, chip in self.chipsDict.items()}
+                for serial, chip in self.chipsDict.items()}
 
         differentIDs = set()
         for ser, bp in bpDict.items():
@@ -298,7 +300,6 @@ class waferCollation(c.collation):
         
         chipSerials = []
         for group in chipGroups:
-            print(f'DEBUG: group {group}')
             chipSerials += self.waferBlueprint.getWaferChipSerials(group)
         
         locationDict = {}
@@ -600,6 +601,7 @@ class waferCollation_Budapest(waferCollation):
         dataDict = {}
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.status
+        log.debug(f'[plotChipStatus] {dataDict}')
             
         plt = wplt.waferPlotter(self.connection, 'Budapest')
         plt.plotData_chipScale(dataDict, dataType = 'string',

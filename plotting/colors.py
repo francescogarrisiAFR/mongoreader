@@ -172,7 +172,7 @@ def floatsColors(data:list, colormapName:str = None,
             rangeMax = autoRangeMax
 
     if colormapName is None:
-        colormap = get_cmap('rainbow')
+        colormap = get_cmap()
     else:
         colormap = get_cmap(colormapName)
 
@@ -293,6 +293,8 @@ def addLegend(fig, legendDict = None, legendFontSize = None):
     if legendDict is None: legendDict = {}
 
     if legendFontSize is None: legendFontSize = 15
+
+    log.debug(f'[addLegend] legendDict: {legendDict}')
 
     for text, color in legendDict.items():
         if color is None:
