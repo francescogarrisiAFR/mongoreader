@@ -87,7 +87,7 @@ class waferCollation(c.collation):
 
         if isinstance(waferName_orID, str):
 
-            wafer = mom.queryOne(self.connection, {'name': {'$regex': waferName_orID}}, None,
+            wafer = mom.queryOne(self.connection, {'name': waferName_orID}, None,
             database, collection, 'native',
             verbose = False)
         
@@ -98,7 +98,8 @@ class waferCollation(c.collation):
             if not isID(waferName_orID):
                 raise TypeError('"waferName_orID" must be a string or an ID.')
 
-            wafer = mom.importWafer(waferName_orID, self.connection)
+            wafer = mom.importWafer(waferName_orID, self.connection,
+                verbose = False)
             if wafer is None:
                 raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
 
@@ -119,12 +120,11 @@ class waferCollation(c.collation):
 
         wafID = self.wafer.ID
 
-        with opened(self.connection):
-            bars = mom.query(self.connection,
-                {'parentComponentID': wafID, 'componentType': 'wafer bar'},
-                None,
-                database, collection, 'native',
-                verbose = False)
+        bars = mom.query(self.connection,
+            {'parentComponentID': wafID, 'componentType': 'wafer bar'},
+            None,
+            database, collection, 'native',
+            verbose = False)
 
         log.info(f'Collected {len(bars)} bars')
         for ind, bar in enumerate(bars):
@@ -173,7 +173,7 @@ class waferCollation(c.collation):
         
         Raises DocumentNotFound if the blueprint is not found."""
 
-        wbp = self.wafer.retrieveWaferBlueprint(self.connection)
+        wbp = self.wafer.retrieveWaferBlueprint(self.connection, verbose = False)
         if wbp is None:
             raise DocumentNotFound('Could not retrieve the wafer blueprint.')
 
@@ -182,10 +182,11 @@ class waferCollation(c.collation):
 
     def collectChipBlueprints(self, checkNumber:int = None):
         
-        bpDict = {serial: 
-                mom.importOpticalChipBlueprint(chip.blueprintID,
-                    self.connection)
-            for serial, chip in self.chipsDict.items()}
+        with opened(self.connection):
+            bpDict = {serial: mom.importOpticalChipBlueprint(
+                        chip.blueprintID, self.connection, verbose = False)
+
+                for serial, chip in self.chipsDict.items()}
 
         differentIDs = set()
         for ser, bp in bpDict.items():

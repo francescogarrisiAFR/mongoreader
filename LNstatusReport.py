@@ -191,9 +191,7 @@ def printWaferDashboard(connection:mom.connection,
     
 if __name__ == '__main__':
 
-    print("""\n\n --- This is a demo script. ---
-You should copy-paste it outside the library before modifying it,
-otherwise it will be overwritten at the next Git pull.\n""")
+    mom.log.warning("""--- This is a demo script. --- You should copy-paste it outside the library before modifying it, otherwise it will be overwritten at the next Git pull.""")
 
     wafers = [
         # '2DR0003',

@@ -599,6 +599,7 @@ def waferPlotter(connection, maskSet:str):
 
     ID = blueprintIDs[maskSet]
 
-    waferBP = importWaferBlueprint(ID, connection)
+    log.debug(f'[waferPlotter] waferBlueprintID: {ID}')
+    waferBP = importWaferBlueprint(ID, connection, verbose = False)
 
     return _waferPlotter(connection, waferBP = waferBP)
