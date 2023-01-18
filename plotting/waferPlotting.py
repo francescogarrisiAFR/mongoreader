@@ -15,7 +15,8 @@ from mongomanager import (
         log,
         waferBlueprint,
         importWaferBlueprint,
-        isID
+        isID,
+        opened
 )
 
 from pathlib import Path
@@ -33,10 +34,11 @@ class _waferPlotter:
         if not isinstance(waferBP, waferBlueprint):
             raise TypeError('"waferBP" must be a mongomanager.waferBlueprint object.')
         
-        self.waferBP = waferBP
-        self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
-        self.allowedGroups = waferBP.getWaferChipGroupNames()
-        self.allChipLabels = waferBP.getWaferChipSerials()
+        with opened(connection):
+            self.waferBP = waferBP
+            self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
+            self.allowedGroups = waferBP.getWaferChipGroupNames()
+            self.allChipLabels = waferBP.getWaferChipSerials()
 
         # Should be retrieved from waferBP's "geometry" field.
         self.D = 101.6 # Wafer plot diameter in mm

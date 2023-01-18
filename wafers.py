@@ -67,15 +67,17 @@ class waferCollation(c.collation):
             raise TypeError('"waferMaskLabel" must be a string.')
 
         with opened(connection):
+        
             self.chips = self.collectChips(chipsCheckNumber)
             self.bars = self.collectBars(barsCheckNumber)
         
             self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
-            self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
-        
+            self.chipBlueprints, self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
+            
             self.barsDict = self.defineBarsDict(barsKeyCriterion)
-        
+            
         self.waferMaskLabel = waferMaskLabel
+
 
     def collectWafer(self, waferName_orID:str,
         database:str = 'beLaboratory', collection:str = 'components'):
@@ -183,25 +185,29 @@ class waferCollation(c.collation):
 
     def collectChipBlueprints(self, checkNumber:int = None):
         
+        chipBPdict = {}
+        chipBlueprints = []
+        chipBlueprintIDs = []
+        
         with opened(self.connection):
-            bpDict = {serial: 
-                mom.importOpticalChipBlueprint(chip.blueprintID,
-                    self.connection)
-                for serial, chip in self.chipsDict.items()}
+            for serial, chip in self.chipsDict.items():
+                bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
+                
+                if bp is None:
+                    raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{serial}".')
 
-        differentIDs = set()
-        for ser, bp in bpDict.items():
-            if bp is None:
-                raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{ser}".')
-            differentIDs.add(mom.toStringID(bp.ID))
+                chipBPdict[serial] = bp
+                if bp.ID not in chipBlueprintIDs:
+                    chipBlueprintIDs.append(bp.ID)
+                    chipBlueprints.append(bp)
 
         if checkNumber is not None:
-            if len(differentIDs) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} different blueprints. Instead, I found {len(differentIDs)}.')
+            if len(chipBlueprints) != checkNumber:
+                log.warning(f'I expected to find {checkNumber} different blueprints. Instead, I found {len(chipBlueprints)}.')
 
-        log.info(f'Collected {len(differentIDs)} different chip blueprints.')
+        log.info(f'Collected {len(chipBlueprints)} different chip blueprints.')
 
-        return bpDict
+        return chipBlueprints, chipBPdict
 
     def defineChipsDict(self, keyCriterion:callable):
         """Used to define a dictionary with 'chipLabel': <chipComponent>
@@ -265,31 +271,53 @@ class waferCollation(c.collation):
 
 
     def refresh(self):
-        """Refreshes all the components from the database."""
+        """Refreshes from the database all the components and blueprints."""
         
-        self.wafer.mongoRefresh(self.connection)
-        log.spare(f'Refreshed wafer "{self.wafer.name}".')
-
-        self.waferBlueprint.mongoRefresh(self.connection)
-        log.spare(f'Refreshed waferBlueprint "{self.waferBlueprint.name}".')
-
         with opened(self.connection):
-            for chip in self.chips:
-                chip.mongoRefresh(self.connection)
-        log.spare(f'Refreshed chips.')
+            
+            self.wafer.mongoRefresh(self.connection)
+            log.spare(f'Refreshed wafer "{self.wafer.name}".')
 
-        with opened(self.connection):
-            for bar in self.bars:
-                bar.mongoRefresh(self.connection)
-        log.spare(f'Refreshed bars.')
+            self.waferBlueprint.mongoRefresh(self.connection)
+            log.spare(f'Refreshed waferBlueprint "{self.waferBlueprint.name}".')
+        
+            for chip in self.chips: chip.mongoRefresh(self.connection)
+            log.spare(f'Refreshed chips.')
+
+            for bar in self.bars: bar.mongoRefresh(self.connection)
+            log.spare(f'Refreshed bars.')
+
+            for bp in self.chipBlueprints: bp.mongoRefresh(self.connection)
+            log.spare(f'Refreshed chip blueprints.')
 
 
     # ---------------------------------------------------
     # Data retrieval methods
 
 
+    def retrieveAllTestResultNames(self):
+        """Returns the list of all the test result names found in the test
+        history of all the chips of the collation.
+        
+        Returns None if no result name is found."""
+
+        allNames = []
+        for chip in self.chips:
+            testNames = chip.retrieveTestResultNames()
+            
+            if testNames is None:
+                continue
+            
+            for name in testNames:
+                if name not in allNames:
+                    allNames.append(name)
+        
+        if allNames == []: return None
+
+        return allNames
+
     def retrieveDatasheetData(self,
-        resultName:str,
+        resultName_orNames,
         chipGroup_orGroups,
         locationGroup:str):
 
@@ -300,6 +328,7 @@ class waferCollation(c.collation):
         
         chipSerials = []
         for group in chipGroups:
+            print(f'DEBUG: group {group}')
             chipSerials += self.waferBlueprint.getWaferChipSerials(group)
         
         locationDict = {}
@@ -308,14 +337,34 @@ class waferCollation(c.collation):
             locNames = chipBp.getLocationNames(locationGroup)
             locationDict[serial] = locNames
 
-        dataDict = {serial: chipGoggles.datasheedData(
-                        self.chipsDict[serial],
-                        resultName,
-                        locationDict[serial])
-            for serial in chipSerials}
+        if isinstance(resultName_orNames, str):
+            resultNames = [resultName_orNames]
+        else:
+            resultNames = resultName_orNames
+        
+        returnDict = {resName: {serial: None for serial in chipSerials}
+                        for resName in resultNames}
 
-        return dataDict
+        for serial in chipSerials:
+            goggled = chipGoggles.datasheedData(
+                            self.chipsDict[serial],
+                            resultNames,
+                            locationDict[serial])
 
+            # goggled is in the form
+            # {
+            #       <resultName1>: {<loc1>: <data1>,  <loc1>: <data2>, ...},
+            #       <resultName2>: {<loc1>: <data1>,  <loc1>: <data2>, ...},     
+            #       ...
+            # }
+            
+            for goggledResName, dataDict in goggled.items():
+                returnDict[goggledResName][serial] = dataDict
+        
+        if isinstance(resultName_orNames, str):
+            return returnDict[resultName_orNames]
+        else:
+            return returnDict
 
     def plotDatasheetData(self,
         resultName:str,
@@ -335,6 +384,9 @@ class waferCollation(c.collation):
         chipLabelsDirection:str = None,
         dpi = None
         ):
+        """Generates a subchip-scale plot of datasheet-ready data.
+        
+        Returns the dataDict used to generate the plot."""
 
         plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
     
@@ -366,6 +418,8 @@ class waferCollation(c.collation):
             chipLabelsDirection = chipLabelsDirection,
             dpi = dpi,
             )
+
+        return dataDict
 
 
 
