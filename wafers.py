@@ -7,6 +7,8 @@ import mongoreader.gogglesFunctions as gf
 from mongoutils import isID
 from mongoutils.connections import opened
 from mongomanager import log
+
+
 from mongomanager.errors import DocumentNotFound
 
 chipGoggles = gf.chipGoggleFunctions()
@@ -366,6 +368,21 @@ class waferCollation(c.collation):
         else:
             return returnDict
 
+    def plotChipStatus(self):
+
+        dataDict = {}
+        for chip in self.chips:
+            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
+            
+        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+        plt.plotData_chipScale(dataDict, dataType = 'string',
+            title = 'Chip status',
+            colormapName='rainbow',
+            waferName = self.wafer.name,
+            printChipLabels = True,
+            )
+
+
     def plotDatasheetData(self,
         resultName:str,
         chipGroup_orGroups,
@@ -619,19 +636,7 @@ class waferCollation_Bilbao(waferCollation):
     # -------------------------------
     # Plot methods
 
-    def plotChipStatus(self):
-
-        dataDict = {}
-        for chip in self.chips:
-            dataDict[chip.name.split('_')[1]] = chip.status
-            
-        plt = wplt.waferPlotter(self.waferMaskLabel)
-        plt.plotData_chipScale(dataDict, dataType = 'string',
-            title = 'Chip status',
-            colormapName='rainbow',
-            waferName = self.wafer.name,
-            printChipLabels = True,
-            )
+    
 
 class waferCollation_Budapest(waferCollation):
 
@@ -650,20 +655,6 @@ class waferCollation_Budapest(waferCollation):
         if '2DR' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Budapest" wafer.')
 
-    def plotChipStatus(self):
-
-        dataDict = {}
-        for chip in self.chips:
-            dataDict[chip.name.split('_')[1]] = chip.status
-        log.debug(f'[plotChipStatus] {dataDict}')
-            
-        plt = wplt.waferPlotter(self.connection, 'Budapest')
-        plt.plotData_chipScale(dataDict, dataType = 'string',
-            title = 'Chip status',
-            colormapName='rainbow',
-            waferName = self.wafer.name,
-            printChipLabels = True)
-
 
 class waferCollation_Cambridge(waferCollation):
 
@@ -680,6 +671,7 @@ class waferCollation_Cambridge(waferCollation):
 
         # if '2DR' not in self.wafer.name:
         #     log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "PAM4" wafer.')
+
 
 class waferCollation_Como(waferCollation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,

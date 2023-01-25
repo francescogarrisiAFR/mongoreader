@@ -43,7 +43,7 @@ class _waferPlotter:
         # Should be retrieved from waferBP's "geometry" field.
         self.D = 101.6 # Wafer plot diameter in mm
         if notch is None:
-            self.notch = 5.0
+            self.notch = 2.7
 
     def _chipGroupLabels(self, groups:list):
 
@@ -186,7 +186,7 @@ class _waferPlotter:
 
         # Wafer name
         if waferName is not None:
-            ax.text(0, -self.D/2, waferName,
+            ax.text(0, -1.05*self.D/2, waferName,
                 fontsize = 20,
                 ha = 'center')
 
@@ -586,7 +586,7 @@ def autoRangeDataDict(dataDict:dict,
 def waferPlotter(connection, maskSet:str):
 
     blueprintIDs = {
-        'Bilbao': None,
+        'Bilbao': '63c045efeb57e74cb519be89', # "Bilbao wafer"
         'Budapest': '6398434725e51a373ac387fb', # "Budapest wafer"
         'Cambridge': None,
         'Como': None
