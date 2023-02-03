@@ -55,7 +55,10 @@ class chipGoggleFunctions:
         for res in entryResults:    
 
             if searchDatasheetReady:
-                if res.get('datasheetReady') is False:
+                # Does not skip if datasheetReady is True.
+                # Skip if datasheetReady is False or is missing.
+                dready = res.get('datasheetReady')
+                if dready is None or dready is False: 
                     continue
 
             resName = res.get('resultName')
