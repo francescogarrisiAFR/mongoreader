@@ -681,6 +681,72 @@ class waferCollation_Como(waferCollation):
             raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
 
+
+
+# Utilities functions
+
+def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:str = 'name'):
+    """Queries beLaboratory/components for wafers.
+
+    Args:
+        connection (mongomanager.connection): The connection instance to the
+            MongoDB server. 
+        waferType (str, optional): If passed, it checks that the string
+            "waferType" appears in the document name.
+        returnType (str, optional): Can be either "name" or "wafer". If "name",
+            only the name of the wafers are returned; if "wafer", the whole
+            documents are returned. Defaults to "name".
+
+    Raises:
+        TypeError: If arguments are not specified correctly.
+        ValueError: If arguments are not specified correctly.
+
+    Returns:
+        list[str] | list[mongomanager.wafer] | None: The list of results found,
+            or None if no result is found.
+    """
+
+    _returnTypes = ['name', 'wafer']
+
+    if not isinstance(connection, mom.connection):
+        raise TypeError('"connection" must be a mongomanager.connection object.')
+
+    if waferType is not None:
+        if not isinstance(waferType, str):
+            raise TypeError('"waferType" must be a string or None.')
+    
+    if not isinstance(returnType, str):
+        raise TypeError('"returnType" must be a string.')
+
+    if not returnType in _returnTypes:
+        raise ValueError('"returnType" must be either "name" or "wafer".')
+    
+    query = {'type': 'wafer'}
+
+    # Defining query parameters
+    if returnType == "name":
+        proj = {'name': 1}
+    elif returnType == 'wafer':
+        proj = None
+
+    if waferType is not None:
+        query['name'] = {"$regex": waferType}
+
+    
+    queryResults = mom.query(connection,query, proj,
+                            "beLaboratory", "components", returnType = "native")
+
+    if queryResults is None:
+        return None
+
+    if returnType == "name":
+        names = [qr.name for qr in queryResults]
+        return names
+    elif returnType == "wafer":
+        return queryResults
+
+
+
 def _statusString(component):
 
     if not component.hasStatusLog():
