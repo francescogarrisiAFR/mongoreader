@@ -46,6 +46,21 @@ class _waferPlotter:
             self.notch = 2.7
 
     def _chipGroupLabels(self, groups:list):
+        """Given the chip groups, it returns all the chip labels associated
+        to them.
+
+        Elements of "groups" must be among self.allowedGroups.
+
+        Args:
+            groups (list[str]): The chip groups.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+
+        Returns:
+            list[str]: The list of labels. Does NOT return None.
+        """
 
         if groups is None:
             return self.allChipLabels
@@ -66,7 +81,19 @@ class _waferPlotter:
         
     
     def _chipP1P2(self, chipLabel:str):
-        """Returnes the p1-p2 pairs of points that identify chip rectangles on wafer."""
+        """Returnes the p1-p2 pairs of points that identify chip rectangles on
+        wafer.
+
+        Args:
+            chipLabel (str): The label that identifies the chip.
+
+        Raises:
+            ValueError: If chip label is not in self.allChipLabels.
+
+        Returns:
+            2-tuple: p1, p2, where p1 is a (x, y) tuple of floats, representing
+                coordinates in microns.
+        """        
 
         if not chipLabel in self.allChipLabels:
             raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
@@ -81,27 +108,49 @@ class _waferPlotter:
         return p1, p2
 
     def _chipPatch(self, chipLabel:str, color = None):
-        """Returnes the (possibily colored) rectangle patch for a labeled chip."""
+        """Returnes the (possibily colored) rectangle patch for a labeled chip.
+
+        Args:
+            chipLabel (str): The label that identifies the chip.
+            color (str | 3-tuple[float], optional): The color of the rectangle
+                patch. Defaults to None.
+
+        Returns:
+            mongoreader.patches.rectPatch: The patch for the rectangle.
+        """        
 
         p1, p2 = self._chipP1P2(chipLabel)
         
         return p.rectPatch(p1, p2, color)
 
     
-    def _chipSubPatches(self, chipLabel:str, colors:list = None):
+    def _chipSubPatches(self, chipLabel:str, colors:list):
         """Returns a list of rectangles (possibily colored) that fill the space
         of a chip on the wafer.
         
-        The number of sub-sections is determined from the kind of chip.
-        DR4/FR4 -> 4
-        DR8/FR8 -> 4
+        The number of sub-sections is determined from the length of the
+        "colors" list, which must be passed and cannot be None.
         
-        If "colors" is passed, it must be a list as long as the number of
-        subsections. "colors" may contain colors or None.
+        "colors" contains colors (string or 3-tuple) or None.
 
-        """
+        Internally the method calls mongoreader.patches.rectSubPatches().
+
+        Args:
+            chipLabel (str): The label that identifies the chip.
+            colors (list[str|3-tuple|None]): The colors associated to the
+                sub-patches.
+
+        Raises:
+            TypeError: If arguments are not correctly specified.
+
+        Returns:
+            list[mongoreader.patches.rectPatch]: The sub-patches.
+        """        
         p1, p2 = self._chipP1P2(chipLabel)
         
+        if not isinstance(colors, list):
+            raise TypeError('"colors" must be a list, containing float 3-tuples, strings or None.')
+
         subSections = len(colors)
 
         log.debug(f'[_chipSubPatches] {chipLabel}: {p1} - {p2}')
@@ -113,6 +162,22 @@ class _waferPlotter:
 
 
     def _addChipLabelText(self, fig, ax, chipLabel:str, direction:str = None):
+        """Adds a chip label as a text element to a figure, close to the chip
+        patch.
+
+        Args:
+            fig (matplotlib figure): The matplotlib figure (not actually used).
+            ax (matplotlib axis): The axes of the plot.
+            chipLabel (str): The label that identifies the chip.
+            direction (str, optional): If passed, it shifts the label from the
+                center of the chip (default position) to just outside the
+                border of the chip. It can be either "North", "East", "South",
+                or "West". Defaults to None.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+        """        
 
         if direction is not None:
             if not isinstance(direction, str):
@@ -168,7 +233,42 @@ class _waferPlotter:
             labelsDirection:str = None,
             dpi = None
             ):
-        """This is the main function used to realize wafer-plots."""
+        """This is the main function used to realize wafer-plots.
+
+        Args:
+            patches (list): The list of patches that compose the plot
+            rangeMin (float): The minimum range value for the data.
+            rangeMax (float): The maximum range value for the data.
+            colormapName (str, matplotlib colormap name): The name of the
+                colormap used for plotting the data.
+            chipGroups (list, optional): If passed, only the chips associated
+                to the passed groups are rendered. If not, all the chips are
+                rendered. Defaults to None.
+            printBar (bool, optional): If True, the lateral colorbar legend is
+                plotted. Defaults to True.
+            barLabel (str, optional): The label associated to the colorbar.
+                Defaults to None.
+            legendDict (dict, optional): Used for string-type plots. Defaults
+                to None.
+            legendFontSize (int, optional): Self-explanatory. Defaults to None.
+            title (str, optional): The title string that is put at the top of
+                the plot. Defaults to None.
+            waferName (str, optional): If passed, it appears at the bottom of
+                the wafer frame, under the notch. Defaults to None.
+            printDate (bool, optional): If True, the date on which the plot is
+                generated is added at the bottom. Defaults to True.
+            printLabels (bool, optional): If True, chip labels are added to the
+                plot. Defaults to True.
+            labelsDirection (str, optional): If passed, chip labels are shifted
+                to the side of the chips, depending on the actual value, which
+                must be among "North", "East", "South", "West". Defaults to
+                None.
+            dpi (int, optional): dots per inch of the rendered figure. Defaults
+                to None.
+
+        Returns:
+            fig, ax: The figure-axis pair of matplotlib figures.
+        """        
 
         if dpi is None: dpi = 200
 
@@ -218,7 +318,7 @@ class _waferPlotter:
         return fig, ax
 
 
-    def _allChipSubpatches(self, dataDict:dict,
+    def _allChipSubpatches(self, dataDict:dict, *,
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -229,7 +329,51 @@ class _waferPlotter:
         clippingHighColor = None,
         chipGroups:list = None,
         ):
-        """Returns all the subpatches to be plotted by _plot."""
+        """Given the data dictionary and dataType arguments, this method
+        generates all the sub-patches of the chips to be included in the plot.
+
+        This method is used for subchip-scale data, that is when multiple
+        values are associated to each chip. As such, the dataDict is expected
+        to be in the form
+        >>> {
+        >>>     <chipLabel1>: {<value1>, <value2>, ...},
+        >>>     <chipLabel2>: {<value1>, <value2>, ...},
+        >>>     ...
+        >>> }
+
+        Args:
+            dataDict (dict): The data dictionary.
+            dataType (str): The kind of data in the dictionary (currently 
+                "float" or "string").
+            dataRangeMin (float, optional): The minimum range value for the
+                data. Defaults to None.
+            dataRangeMax (float, optional): The maximum range value for the
+                data. Defaults to None.
+            colormapName (str, matplotlib colormap name): The name of the
+                colormap used for plotting the data.
+            colorDict (dict, optional): If passed, it specifies the colors
+                associated to string data ({<string1>: <color1>, <string2>:
+                <color2>, ...}). Defaults to None.
+            NoneColor (str|3-tuple[float], optional): The color associated to
+                None values in the data dictionary. Defaults to None.
+            clippingLowColor (str|3-tuple[float], optional): If passed, values
+                below "dataRangeMin" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            clippingHighColor (str|3-tuple[float], optional): If passed, values
+                above "dataRangeMax" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            chipGroups (list, optional): If passed, only the chips associated
+                to the passed groups are rendered. If not, all the chips are
+                rendered. Defaults to None.
+
+        Raises:
+            NotImplementedError: If "bool" is passed as dataType.
+
+        Returns:
+            4-tuple: subchipPatches, rangeMin, rangeMax, colorDict
+        """        
 
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
         
@@ -270,7 +414,7 @@ class _waferPlotter:
         return subchipPatches, rangeMin, rangeMax, colorDict
 
 
-    def _allChipPatches(self, dataDict:dict,
+    def _allChipPatches(self, dataDict:dict, *,
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -279,7 +423,48 @@ class _waferPlotter:
         NoneColor = None,
         clippingLowColor = None,
         clippingHighColor = None):
-        """Returns all the chip patches to be plotted by _plot."""
+        """Given the data dictionary and dataType arguments, this method
+        generates all the patches of the chips to be included in the plot.
+
+        This method is used for chip-scale data, that is, when a single value
+        is associated to each chip. As such, the dataDict is expected
+        to be in the form
+        >>> {
+        >>>     <chipLabel1>: <value1>,
+        >>>     <chipLabel2>: <value2>,
+        >>>     ...
+        >>> }
+
+        Args:
+            dataDict (dict): The data dictionary,
+            dataType (str): The kind of data in the dictionary (currently 
+                "float" or "string").
+            dataRangeMin (float, optional): The minimum range value for the
+                data. Defaults to None.
+            dataRangeMax (float, optional): The maximum range value for the
+                data. Defaults to None.
+            colormapName (str, matplotlib colormap name): The name of the
+                colormap used for plotting the data.
+            colorDict (dict, optional): If passed, it specifies the colors
+                associated to string data ({<string1>: <color1>, <string2>:
+                <color2>, ...}). Defaults to None.
+            NoneColor (str|3-tuple[float], optional): The color associated to
+                None values in the data dictionary. Defaults to None.
+            clippingLowColor (str|3-tuple[float], optional): If passed, values
+                below "dataRangeMin" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            clippingHighColor (str|3-tuple[float], optional): If passed, values
+                above "dataRangeMax" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            
+        Raises:
+            NotImplementedError: If "bool" is passed as dataType.
+
+        Returns:
+            4-tuple: chipPatches, rangeMin, rangeMax, colorDict
+        """
     
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
     
@@ -331,17 +516,82 @@ class _waferPlotter:
         chipLabelsDirection:str = None,
         dpi = None,
         ):
-        """This is the main function used to plot data at chip-scale.
+        """This is the main function used to plot data at chip-scale, that is
+        when a single value is associated to each chip.
 
-        It is assuemed dataDict is in the form:
-        {
-            'DR4-01': <data>,
-            'DR4-02': <data>,
-            ...
-        }
+        The arguments can be used to customize the plot in various ways, as
+        described below.
 
-        dataType is used to determine how to plot data.
+        The method expects at least the data dictionary and the dataType
+        arguments, which specify the kind of data present in the dictionary.
 
+        The dataDictionary must be in the form:
+        >>> {
+        >>>     <chipLabel1>: <data1>,
+        >>>     <chipLabel1>: <data2>,
+        >>>     ...
+        >>> }
+        where <chipLabel1> must be for instance "DR8-01", "02-SE", etc., while
+        <dataX> can be a float, integer, string or None.
+        
+        In this context None means that the value is not available for that
+        chip (and NoneColor is used), while if a chip label is missing from the
+        dictionary, the chip is rendered as and empty chip (and BackColor is
+        used).
+        
+        dataType currently must be passed (the method does not recognize
+        automatically the data type) and allowed values are "float" and
+        "string". Use "float" for integer values.
+
+        Args:
+            dataDict (dict): The data dictionary.
+            dataType (str): The kind of data in the dictionary (currently 
+                "float" or "string").
+            title (str, optional): The title string that is put at the top of
+                the plot. Defaults to None.
+            dataRangeMin (float, optional): The minimum range value for the
+                data. Defaults to None.
+            dataRangeMax (float, optional): The maximum range value for the
+                data. Defaults to None.
+            NoneColor (str|3-tuple, optional): The color used for None values.
+                Defaults to None.
+            colorDict (dict, optional): If passed, it is the dictionary that 
+                associates colors to string-type values. If not passed, colors
+                are determined automatically form the colormap used. Defaults
+                to None.
+            clippingLowColor (str|3-tuple[float], optional): If passed, values
+                below "dataRangeMin" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            clippingHighColor (str|3-tuple[float], optional): If passed, values
+                above "dataRangeMax" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            BackColor (str|3-tuple, optional): The color used to render chips
+                that are not present in the data dictionary (relevant when the
+                chip groups selected contain chips that are not included in the 
+                data dictionary). Defaults to 'White'.
+            chipGroups (list, optional): If passed, only the chips associated
+                to the passed groups are rendered. If None is passed, all the
+                chips are rendered (if an empty list is passed, nothing is
+                rendered). Defaults to None.
+            waferName (str, optional): If passed, it appears at the bottom of
+                the wafer frame, under the notch. Defaults to None.
+            colormapName (str, matplotlib colormap name): The name of the
+                colormap used for plotting the data.
+            colorbarLabel (str, optional): The label associated to the
+                colorbar. Defaults to None.
+            printChipLabels (bool, optional): If True, chip labels are added to
+                the plot. Defaults to False.
+            chipLabelsDirection (str, optional): If passed, chip labels are
+                shifted to the side of the chips, depending on the actual
+                value, which must be among "North", "East", "South", "West".
+                Defaults to None.
+            dpi (int, optional): dots per inch of the rendered figure. Defaults
+                to None.
+
+        Returns:
+            fig, ax: The figure-axis pair of matplotlib figures.
         """
 
         if not isinstance(dataDict, dict):
@@ -356,10 +606,14 @@ class _waferPlotter:
                 if l not in dataDict]
 
         chipPatches, rangeMin, rangeMax, colorDict = \
-            self._allChipPatches(dataDict, dataType,
-                dataRangeMin, dataRangeMax,
-                colormapName, colorDict, NoneColor,
-                clippingLowColor, clippingHighColor)
+            self._allChipPatches(dataDict, dataType = dataType,
+                dataRangeMin = dataRangeMin,
+                dataRangeMax = dataRangeMax,
+                colormapName = colormapName,
+                colorDict = colorDict,
+                NoneColor = NoneColor,
+                clippingLowColor = clippingLowColor,
+                clippingHighColor = clippingHighColor)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += backChipPatches
@@ -384,7 +638,7 @@ class _waferPlotter:
                 legendDict[string] = color
             
         # Plotting
-        self._plot(allPatches, rangeMin, rangeMax,
+        fig, ax = self._plot(allPatches, rangeMin, rangeMax,
             title = title,
             waferName = waferName,
             legendDict=legendDict,
@@ -396,7 +650,7 @@ class _waferPlotter:
             dpi = dpi,
             )
 
-
+        return fig, ax
         # print(f'DEBUG: {rangeMin}')
         # print(f'DEBUG: {rangeMax}')
 
@@ -416,53 +670,97 @@ class _waferPlotter:
         printChipLabels = False,
         chipLabelsDirection:str = None,
         dpi = None):
-        """This is the main function used to plot data on a sub-chip scale.
-                
-        Arguments:
-            - dataDict: the dictionary containing the data
-            - title (string): the title of the plot
-        
-        Keyword arguments:
-            - dataType (string): the kind of data to be plotted. Can be "float"
-                or "string".
-            - dataRangeMin (float) [optional]: The minimum value to be plotted.
-                Valid for dataType = "float"
-            - dataRangeMax (float) [optional]: The maximum value to be plotted.
-                Valid for dataType = "float"
-            - NoneColor (3-tuple or None): The color used to plot None data
-            - clippingHighColor [optional]: color used when data exceed
-                dataRangeMax. Valid for dataType = "float"
-            - clippingHighColor [optional]: color used when data exceed
-                dataRangeMin. Valid for dataType = "float"
-            - chipGroups (list of Strings): if passed, it only shows chips for
-                the given group.
-                For Budapest wafers, allowed values are: "DR4", "DR8", "FR4",
-                    "FR8"
-            - waferName (string) [optional]: The name of the wafer to be shown
-            - colormapName (string) [optional]: a matplotlib colormap name
-            - colorbarLabel (string) [optional]: the label of the bar legend.
-                Valid for dataType = "float"
-            - printChipLabels (bool, def. False): If True, chip labels are
-                printed
-            - chipLabelsDirection (string | None) [optional]: If "East",
-                "West", "North" or "South" it displaces the chip labels to the
-                side of the chip.
-            - dpi (number): if passed, it changes the dpi setting of matplotlib
-        
-        Data dict has to be properly formatted, following the pattern:
-        {
-            <chipLabel>: {'loc1': <data>, 'loc2': <data>, ...},
-            ...
-        }
-        where <chipLabel> must correspond to the chips defined on the wafer
-        maskset, while <data> can be a float or None.
-        For each chip, the number of location/data pairs must correspond to the
-        number of MZs on chip (e.g. DR8 -> 8 location/data pairs).
+        """This is the main function used to plot data at subchip-scale, that
+        is when multiple values are associated to each chip.
 
-        If a <chipLabel> is missing, plotData_subchipScale() only shows the
-        outer boundary of the chip; pass a dictionary with None values to show
-        that data is missing
-        e.g. <chipLabel>: {'loc1': None, 'loc2': None, ...},
+        The arguments can be used to customize the plot in various ways, as
+        described below.
+
+        The method expects at least the data dictionary and the dataType
+        arguments, which specify the kind of data present in the dictionary.
+
+        The dataDictionary must be in the form:
+        >>> {
+        >>>     <chipLabel1>: {
+        >>>                 <locationLabel1>: <value1>,
+        >>>                 <locationLabel2>: <value2>,
+        >>>                 ...
+        >>>             },
+        >>>     <chipLabel2>: {
+        >>>                 <locationLabel1>: <value1>,
+        >>>                 <locationLabel2>: <value2>,
+        >>>                 ...
+        >>>             },
+        >>>     ...
+        >>> }
+        where <chipLabel1> must be for instance "DR8-01", "02-SE", etc.,
+        <dataX> can be a float, integer, string or None, and <locationLabelX>
+        must be a location label associated to the chip (e.g. "MZ1", "MZ2",
+        etc.).
+
+        Allowed location labels are defined in the chip blueprint.
+        
+        In this context None means that the value is not available for that
+        chip (and NoneColor is used), while if a chip label is missing from the
+        dictionary, the chip is rendered as and empty chip (and BackColor is
+        used). In particular, if a <chipLabel> is missing, this method only
+        shows the outer boundary of the chip; pass a dictionary with None
+        values to show that data is missing.
+        
+        dataType currently must be passed (the method does not recognize
+        automatically the data type) and allowed values are "float" and
+        "string". Use "float" for integer values.
+        
+        Args:
+            dataDict (dict): The data dictionary.
+            dataType (str): The kind of data in the dictionary (currently 
+                "float" or "string").
+            dataRangeMin (float, optional): The minimum range value for the
+                data. Defaults to None.
+            dataRangeMax (float, optional): The maximum range value for the
+                data. Defaults to None.
+            NoneColor (str|3-tuple, optional): The color used for None values.
+                Defaults to None.
+            colorDict (dict, optional): If passed, it is the dictionary that 
+                associates colors to string-type values. If not passed, colors
+                are determined automatically form the colormap used. Defaults
+                to None.
+            clippingLowColor (str|3-tuple[float], optional): If passed, values
+                below "dataRangeMin" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            clippingHighColor (str|3-tuple[float], optional): If passed, values
+                above "dataRangeMax" will be rendered with this color,
+                otherwise the extreme color of the matplotlib colormap is used.
+                Defaults to None.
+            BackColor (str|3-tuple, optional): The color used to render chips
+                that are not present in the data dictionary (relevant when the
+                chip groups selected contain chips that are not included in the 
+                data dictionary). Defaults to 'White'.
+            chipGroups (list, optional): If passed, only the chips associated
+                to the passed groups are rendered. If None is passed, all the
+                chips are rendered (if an empty list is passed, nothing is
+                rendered). Defaults to None.
+            waferName (str, optional): If passed, it appears at the bottom of
+                the wafer frame, under the notch. Defaults to None.
+            colormapName (str, matplotlib colormap name): The name of the
+                colormap used for plotting the data.
+            colorbarLabel (str, optional): The label associated to the
+                colorbar. Defaults to None.
+            printChipLabels (bool, optional): If True, chip labels are added to
+                the plot. Defaults to False.
+            chipLabelsDirection (str, optional): If passed, chip labels are
+                shifted to the side of the chips, depending on the actual
+                value, which must be among "North", "East", "South", "West".
+                Defaults to None.
+            dpi (int, optional): dots per inch of the rendered figure. Defaults
+                to None.
+        
+        Raises:
+            TypeError: If dataDict is not a dictionary.
+        
+        Returns:
+            fig, ax: The figure-axis pair of matplotlib figures.
         """
 
         if not isinstance(dataDict, dict):
@@ -477,14 +775,14 @@ class _waferPlotter:
 
         subchipPatches, rangeMin, rangeMax, colorDict = \
             self._allChipSubpatches(dataDict,
-                dataType,
-                dataRangeMin, dataRangeMax,
-                colormapName,
-                colorDict,
-                NoneColor,
-                clippingLowColor,
-                clippingHighColor,
-                chipGroups)
+                dataType = dataType,
+                dataRangeMin = dataRangeMin, dataRangeMax = dataRangeMax,
+                colormapName = colormapName,
+                colorDict = colorDict,
+                NoneColor = NoneColor,
+                clippingLowColor = clippingLowColor,
+                clippingHighColor = clippingHighColor,
+                chipGroups = chipGroups)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += chipPatches
@@ -524,11 +822,15 @@ class _waferPlotter:
 
 
 def normalizeFloatData(dataList:list):
-    """Converts integer found within dataList to float;
-    float and None are left unchanged.
+    """Converts integer found within dataList to float; float and None are left
+    unchanged.
+
+    Args:
+        dataList(list): The data list.
     
-    Raises TypeError if dataList is not a list.
-    Raises ValueError if elements of dataList are not float, integers or None.
+    Raises:
+        TypeError: If dataList is not a list.
+        ValueError: If elements of dataList are not float, integers or None.
     """
 
     if not isinstance(dataList, list):
@@ -550,6 +852,21 @@ def normalizeFloatData(dataList:list):
 
 def autoRangeDataDict(dataDict:dict,
         userRangeMin:float = None, userRangeMax:float = None):
+    """Given the dataDict, it returns the max and min values for its range.
+
+    One can overwrite the automatically determined value using the
+    userRangeMin and userRangeMax arguments.
+
+    Args:
+        dataDict (dict): The data dictionary
+        userRangeMin (float, optional): Overwrites the minimum range value.
+            Defaults to None.
+        userRangeMax (float, optional): Overwrites the maximum range value.
+            Defaults to None.
+
+    Returns:
+        2-tuple[float]: rangeMin, rangeMax
+    """    
 
     if isinstance(userRangeMin, int):
         userRangeMin = float(userRangeMin)
@@ -584,6 +901,24 @@ def autoRangeDataDict(dataDict:dict,
 
 
 def waferPlotter(connection, maskSet:str):
+    """This function is used to return an instance of the correct sub-class
+    of the waferPlotter class, based on the maskSet name.
+
+    Internally, the function retrieves the wafer blueprint associated to the
+    mask set and uses it to instanciate a _waferPlotter object.
+
+    Args:
+        connection (mongomanager.connection): The connection instance to the
+            MongoDB server.
+        maskSet (str): The name of the mask set to be used. Currently
+            "Bilbao" and "Budapest" are supported.
+
+    Raises:
+        TypeError: If arguments are not specified correctly.
+
+    Returns:
+        _waferPlotter: The correct wafer plotter instance.
+    """    
 
     blueprintIDs = {
         'Bilbao': '63c045efeb57e74cb519be89', # "Bilbao wafer"

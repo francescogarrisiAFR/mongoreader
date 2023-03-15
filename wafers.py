@@ -1,6 +1,7 @@
 import mongomanager as mom
 # import mongomanager.info as i
 import mongoreader.core as c
+import mongoreader.errors as e
 import mongoreader.plotting.waferPlotting as wplt
 import mongoreader.gogglesFunctions as gf
 
@@ -17,16 +18,21 @@ class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer
     and its related components (typically chips, bars and test structures).
     
-    The collation than has useful methods to extract and plot data from this
+    The collation has useful methods to extract and plot data from this
     set of components.
     
     A generic waferCollation is not usually instanciated directly; instead,
-    for specific wafer types you should use the related sub-class.
-    For instance:
-        Bilbao -> waferCollation_CDM
-        Budapest -> waferCollation_PAM4
-        Cambridge -> waferCollation_Cambridge
-        Como -> waferCollation_Como
+    for specific wafer types (a type is identified in terms of the maskset of
+    the wafer) you should use the related sub-class. For instance:
+    - Bilbao: waferCollation_Bilbao
+    - Budapest: waferCollation_Budapest
+    - Cambridge: waferCollation_Cambridge
+    - Como: waferCollation_Como
+
+    Apart from the methods described below, a waferCollation has some useful
+    features that can be used for retrieving and plotting information on its
+    wafer/chips/bars, and to retrieve these components easily.
+
     """
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
@@ -39,19 +45,54 @@ class waferCollation(c.collation):
             chipsKeyCriterion:callable,
             barsKeyCriterion:callable,
             ):
-        """
-        connection: a mongoutils/mongomanager connection object.
-        waferName_orCmp_orID: the name of the wafer / a wafer component / 
-            its ID -- used to retrieve the wafer and the related components
-        database -- the database where to look into (def. 'beLaboratory')
-        collection -- the collection where to look into (def. 'components')
+        """Initialization method of the waferCollation class.
 
-        keyword arguments:
-            - chipsCheckNumber:int = None -- see .collectChips()
-            - barsCheckNumber:int = None -- see .collectBars()
-            - chipsKeyCriterion:callable -- see .defineChipsDict()
-            - barsKeyCriterion:callable -- see .defineBarsDict()
-        """
+        The main purpose of this method is to retrieve the wafer, bars, and
+        chip components from the database and assign them to the corresponding
+        attributes of the waferCollation instance.
+
+        It also 
+
+        This __init__ method is meant to be called __init__ of subclasses of  
+        waferCollation. Some arguments have to be defined in the subclass
+        __init__ and passed, otherwise exception are raised.
+
+        Args:
+            connection (mongomanager.connection): The connection instance to 
+                the MongoDB server.
+            waferName_orCmp_orID (str | mongomanager.component | ObjectId): The 
+                collation wafer.
+            database (str, optional): The MongoDB database where the wafer is
+                found (needed if the wafer is not passed as a full component). 
+                Defaults to 'beLaboratory'.
+            collection (str, optional): The MongoDB collection where the wafer
+                is found (needed if the wafer is not passed as a full 
+                component). Defaults to 'components'.
+
+        Keyword args:
+            chipsKeyCriterion (callable): A function that takes the name of a
+                chip as argument and returns the key to be used in the
+                chipsDictionary. (e.g. "2CDM0005_DR8-01" -> "DR8-01").
+                Defaults to None.
+            barsKeyCriterion (callable): As above, for the bars. Defaults to
+                None.
+            waferMaskLabel (str): To be passed by the subclass of
+                waferCollation. Defaults to None, but raises an error if it
+                raises ImplementationError if it is not passed as a string.
+            chipsCheckNumber (int, optional): If passed, __init__ checks that
+                the amount of retrieved chip corresponds to this number.
+                Defaults to None.
+            chipBlueprintCheckNumber (int, optional): If passed, __init__ 
+                checks that the amount of retrieved chip blueprints corresponds
+                to this number. Defaults to None.
+            barsCheckNumber (int, optional): If passed, __init__ 
+                checks that the amount of retrieved bar components corresponds
+                to this number. Defaults to None.
+
+        Raises:
+            ImplementationError: When 
+            TypeError: If arguments are not specified correctly.
+        """        
 
         if not isinstance(connection, mom.connection):
             raise TypeError('"connection" must be a mongomanager.connection object.')
@@ -66,7 +107,7 @@ class waferCollation(c.collation):
         self.waferBlueprint = self.collectWaferBlueprint()
         
         if not isinstance(waferMaskLabel, str):
-            raise TypeError('"waferMaskLabel" must be a string.')
+            raise e.ImplementationError('"waferMaskLabel" must be a string.')
 
         with opened(connection):
         
@@ -81,13 +122,23 @@ class waferCollation(c.collation):
         self.waferMaskLabel = waferMaskLabel
 
 
-    def collectWafer(self, waferName_orID:str,
+    def collectWafer(self, waferName_orID,
         database:str = 'beLaboratory', collection:str = 'components'):
-        """Retrieves the wafer component from the database.
-        
-        waferName_orID -- The name (string) or ID of the wafer to be retrieved.
-        database/collection (def. beLaboratory/components) -- where to look for 
-        it.
+        """Queries the database for the specified wafer and returns it.
+
+        Args:
+            waferName_orID (str | ObjectId): The wafer name or its ID.
+            database (str, optional): The database where the wafer is found.
+                Defaults to 'beLaboratory'.
+            collection (str, optional): The collection where the wafer is 
+                found. Defaults to 'components'.
+
+        Raises:
+            DocumentNotFound: If the wafer is not found.
+            TypeError: If arguments are not specified correctly.
+
+        Returns:
+            wafer: The collected wafer.
         """
 
         if isinstance(waferName_orID, str):
@@ -114,7 +165,24 @@ class waferCollation(c.collation):
     def collectBars(self,
         checkNumber:int = None,
         database:str = 'beLaboratory', collection:str = 'components'):
-        """Queries the database for bar object whose parent component is the wafer."""
+        """Queries the database for bar objects whose parent component is the wafer and returns them.
+
+        Args:
+            checkNumber (int, optional): If passed, it checks that the amount
+                of bars found corresponds to this number. Defaults to None.
+            database (str, optional): The database where the bars are  found.
+                Defaults to 'beLaboratory'.
+            collection (str, optional): The collection where the bars are 
+                found. Defaults to 'components'.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+
+        Returns:
+            List[component]: The list of retrieved bar components. May return
+                other type of mongoDocuments.
+        """        
 
         if checkNumber is not None:
             if not isinstance(checkNumber, int):
@@ -143,15 +211,21 @@ class waferCollation(c.collation):
 
 
     def collectChips(self, checkNumber:int = None):
-        """Looks into the wafer children components to find the chips associated
-        to the wafer.
-        
-        checkNumber (positive int) -- If passed, the method checks that the
-            number of retrieved chips is equal to checkNumber, and issues a
-            warning in case it is not.
+        """Queries the database for optical chip objects whose parent component
+        is the wafer and returns them.
 
         Internally, the method calls .retrieveChildrenComponents() on the
         collation's wafer.
+        
+        checkNumber (int, optional): If passed, it checks that the amount of
+            chips found corresponds to this number. Defaults to None.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+
+        Returns:
+            List[component]: The list of retrieved chip components.
         """
 
         if checkNumber is not None:
@@ -174,9 +248,14 @@ class waferCollation(c.collation):
         
 
     def collectWaferBlueprint(self):
-        """Returns the wafer blueprint from self.wafer.
+        """Returns the wafer blueprint of the wafer.
         
-        Raises DocumentNotFound if the blueprint is not found."""
+        Raises:
+            DocumentNotFound: If the blueprint is not found.
+            
+        Returns:
+            waferBlueprint: The retrieved wafer blueprint document.
+        """
 
         wbp = self.wafer.retrieveWaferBlueprint(self.connection)
         if wbp is None:
@@ -185,8 +264,30 @@ class waferCollation(c.collation):
         log.info(f'Collected wafer blueprint "{wbp.name}".')
         return wbp
 
+
     def collectChipBlueprints(self, checkNumber:int = None):
+        """Queries the database for optical chip blueprint associated to the
+        collation chips.
         
+        checkNumber (int, optional): If passed, it checks that the amount of
+            chips blueprint found corresponds to this number. Defaults to None.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+            DocumentNotFound: If any of the collation chip has no associated
+                chip blueprint.
+
+        Returns:
+            (List[blueprint], dict): The list of retrieved optical chip and
+                a dictionary in the form
+                >>> {
+                >>>     <chip serial>: <optical chip blueprint>,
+                >>>     ...
+                >>> }
+                that associates a chip serial with its blueprint.
+        """
+
         chipBPdict = {}
         chipBlueprints = []
         chipBlueprintIDs = []
@@ -215,24 +316,30 @@ class waferCollation(c.collation):
         """Used to define a dictionary with 'chipLabel': <chipComponent>
         key-value pairs.
         
-        keyCriterion: a function applied to the name (string) of the chip,
-            which returns the label to be used as the key of the dictionary.
-            By default, the dictionary should use the serial of the chip 
-            (without the wafer name), so for instance:
-            
+        Args:
+            keyCriterion (callable): a function applied to the name (string) of
+                the chip, which returns the label to be used as the key of the
+                dictionary.
+                By default, the dictionary should use the serial of the chip 
+                (without the wafer name), so for instance:
+                
                 chip name: "2DR0001_DR8-01"
-                keyCriterion: lambda s: s.split('_')[1]
+                keyCriterion:
+                >>> lambda s: s.split('_')[1]
             
                 keyCriterion returns "DR8-01" and the dictionary would be
                 defined as 
-                {
-                    'DR8-01': <2DR0001_DR8-01 chip>
-                    'DR8-02': <2DR0001_DR8-02 chip>
-                    ...
-                }
+                >>> {
+                >>>     'DR8-01': <2DR0001_DR8-01 chip>
+                >>>     'DR8-02': <2DR0001_DR8-02 chip>
+                >>>     ...
+                >>> }
 
-        chipLabel must correspond to the 'nameSerial' field of the
-        corresponding opticalChipBlueprint.
+                chipLabel must correspond to the 'nameSerial' field of the
+                corresponding opticalChipBlueprint.
+
+        Returns:
+            dict: The optical chip dictionary.
         """
 
         if self.chips is None:
@@ -245,23 +352,29 @@ class waferCollation(c.collation):
         """Used to define a dictionary with 'barLabel': <barComponent>
         key-value pairs.
         
-        keyCriterion: a function applied to the name (string) of the bar,
-            which returns the label to be used as the key of the dictionary.
+        Args:
+            keyCriterion (callable): a function applied to the name (string) of
+            the bar, which returns the label to be used as the key of the
+            dictionary.
+
             By default, bars are labeled following the pattern:
                 <waferName>_Bar-A
                 <waferName>_Bar-B
                 <waferName>_Bar-C
                 ...
             so, a possible keyCriterion would be:
-                keyCriterion: lambda s: s.rsplit('-', maxsplit = 1)[1]
+            >>> lambda s: s.rsplit('-', maxsplit = 1)[1]
             
-                keyCriterion returns "A", "B", ... and the dictionary would be
-                defined as 
-                {
-                    'A': <<waferName>_Bar-A>
-                    'B': <<waferName>_Bar-B>
-                    ...
-                }
+            keyCriterion returns "A", "B", ... and the dictionary would be
+            defined as 
+            >>> {
+            >>>     'A': <<waferName>_Bar-A>
+            >>>     'B': <<waferName>_Bar-B>
+            >>>     ...
+            >>> }
+
+        Returns:
+            dict: The wafer bar dictionary.
         """
 
         if self.bars is None:
@@ -273,7 +386,10 @@ class waferCollation(c.collation):
 
 
     def refresh(self):
-        """Refreshes from the database all the components and blueprints."""
+        """Refreshes from the database all the components and blueprints of
+        the collation.
+        
+        It calls mongoRefresh() on all of them."""
         
         with opened(self.connection):
             
@@ -368,7 +484,7 @@ class waferCollation(c.collation):
         else:
             return returnDict
 
-    def plotChipStatus(self):
+    def plotChipStatus(self, colorDict = None):
 
         dataDict = {}
         for chip in self.chips:
@@ -380,6 +496,7 @@ class waferCollation(c.collation):
             colormapName='rainbow',
             waferName = self.wafer.name,
             printChipLabels = True,
+            colorDict=colorDict
             )
 
 
@@ -681,8 +798,6 @@ class waferCollation_Como(waferCollation):
             raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
 
-
-
 # Utilities functions
 
 def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:str = 'name'):
@@ -732,6 +847,9 @@ def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:s
     if waferType is not None:
         query['name'] = {"$regex": waferType}
 
+
+
+    
     
     queryResults = mom.query(connection,query, proj,
                             "beLaboratory", "components", returnType = "native")
@@ -744,7 +862,6 @@ def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:s
         return names
     elif returnType == "wafer":
         return queryResults
-
 
 
 def _statusString(component):
