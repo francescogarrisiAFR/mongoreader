@@ -807,7 +807,7 @@ class _waferPlotter:
                 legendDict[string] = color
             
         # Plotting
-        self._plot(allPatches, rangeMin, rangeMax,
+        fig, ax=self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
             chipGroups = chipGroups,
@@ -819,6 +819,7 @@ class _waferPlotter:
             labelsDirection = chipLabelsDirection,
             dpi = dpi
             )
+        return fig, ax
 
 
 def normalizeFloatData(dataList:list):
