@@ -589,7 +589,7 @@ def waferPlotter(connection, maskSet:str):
     blueprintIDs = {
         'Bilbao': '63c045efeb57e74cb519be89', # "Bilbao wafer"
         'Budapest': '6398434725e51a373ac387fb', # "Budapest wafer"
-        'Cambridge': None,
+        'Cambridge': '642592f497d3cc3392ab4202', # "Cambridge wafer"
         'Como': None
     }
     masksetString = ', '.join([f'"{m}"' for m in blueprintIDs.keys()])
