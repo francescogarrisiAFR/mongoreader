@@ -208,38 +208,57 @@ def stringColor(string:str, colorDict:dict, NoneColor = None):
         return NoneColor
 
 
-def colorPalette(colormap, colorsNum):
+def colorPalette(colormap, colorsNum, shiftIndex = 0):
     """Returns a colorsNum-long list of colors.
     
     "colormap" is a matplotlib color map. See matplotlib.pyplot.get_cmap()
+    shiftIndex (default 0): if != 0, the first "shiftIndex" colors are shipped
+    in the generation.
     """
 
     step = 0.45*pi
     values = linspace(0, 1, colorsNum)
-    values = [(n/step)%1 for n in range(colorsNum)]
+    values = [((n+shiftIndex)/step)%1 for n in range(colorsNum)]
 
     return [colormap(val) for val in values]
 
+def stringsSetWithoutNone(strings):
+    """Given a list of strings/None, it returns a set of these strings (as a
+    list of strings) with None removed."""
+                
+    stringsSet = list(set(strings))
+    if None in stringsSet: stringsSet.remove(None)
+    return stringsSet
 
-def colorDictFromStrings(colormap, strings:list):
+
+def colorDictFromStrings(colormap, strings:list, *,
+                         shiftIndex = 0):
     """Returns a color dictionary suitable for the passed list of strings.
     
-    "colormap" is a matplotlib color map. See matplotlib.pyplot.get_cmap()"""
+    "colormap" is a matplotlib color map. See matplotlib.pyplot.get_cmap().
+    
+    shiftIndex is passed as-is to colorPalette(). See documentation of that
+    function."""
 
     if not isinstance(strings, list):
         raise TypeError('"strings" must be a list of strings/None.')
 
-    stringsSet = list(set(strings))
-    if None in stringsSet: stringsSet.remove(None)
+    stringsSet = stringsSetWithoutNone(strings)
 
-    palette = colorPalette(colormap, len(stringsSet))
+    palette = colorPalette(colormap, len(stringsSet), shiftIndex = shiftIndex)
 
     colorDict = {s: c for s, c in zip(stringsSet, palette)}
     return colorDict
 
 def stringsColors(strings:list, colormapName:str = None, NoneColor = None,
-        colorDict:dict = None):
-    """Returns a list of colors given a list of strings/None at the input"""
+        colorDict:dict = None, *,
+        expandColorDict:bool = True
+        ):
+    """Returns a list of colors given a list of strings/None at the input.
+    
+    If "expandColorDict" is True and colorDict is not None, strings not found
+    in the keys of colorDict will be assigned a new color, and colorDict will
+    be updated."""
 
     # Automatically determining the color palette
     if colormapName is None:
@@ -249,9 +268,26 @@ def stringsColors(strings:list, colormapName:str = None, NoneColor = None,
 
     if colorDict is None:
         colorDict = colorDictFromStrings(colormap, strings)
+    
+    notIncludedStrings = [s for s in strings
+                          if s not in colorDict]
+
+    if notIncludedStrings != []:
+        if expandColorDict: # I define colors for strings not included
+            
+            stringsSet = stringsSetWithoutNone(strings)
+            notIncludedStringsSet = stringsSetWithoutNone(notIncludedStrings)
+            shiftIndex = len(stringsSet) - len(notIncludedStringsSet)
+            
+            colorDictExpansion = colorDictFromStrings(colormap,
+                                    notIncludedStrings,
+                                    shiftIndex = shiftIndex)
+
+            colorDict = {**colorDict, **colorDictExpansion}
 
     colorList = [colorDict[s] if s in colorDict else NoneColor
                     for s in strings]
+    
     return colorList, colorDict
     
 

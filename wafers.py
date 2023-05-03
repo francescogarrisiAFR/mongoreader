@@ -769,7 +769,7 @@ class waferCollation_Budapest(waferCollation):
             waferMaskLabel = 'Budapest'
         )
 
-        if '2DR' not in self.wafer.name:
+        if 'DR' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Budapest" wafer.')
 
 
@@ -786,16 +786,26 @@ class waferCollation_Cambridge(waferCollation):
             waferMaskLabel = 'Cambridge'
         )
 
-        # if '2DR' not in self.wafer.name:
-        #     log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "PAM4" wafer.')
+        if 'CM' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Cambridge" wafer.')
 
 
 class waferCollation_Como(waferCollation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components',
-            waferMaskLabel = 'Como'):
+            database:str = 'beLaboratory', collection:str = 'components'):
 
-            raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=58,
+            barsCheckNumber=7,
+            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
+            waferMaskLabel = 'Como'
+        )
+
+        if 'CO' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Como" wafer.')
+
+        # raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
 
 # Utilities functions
@@ -848,9 +858,6 @@ def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:s
         query['name'] = {"$regex": waferType}
 
 
-
-    
-    
     queryResults = mom.query(connection,query, proj,
                             "beLaboratory", "components", returnType = "native")
 
