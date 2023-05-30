@@ -733,7 +733,7 @@ class waferCollation_Bilbao(waferCollation):
             waferMaskLabel = 'Bilbao'
         )
 
-        if '2CDM' not in self.wafer.name:
+        if not ('BI' in self.wafer.name or 'CDM' in self.wafer.name):
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Bilbao" wafer.')
 
     
