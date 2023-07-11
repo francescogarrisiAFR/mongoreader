@@ -719,7 +719,6 @@ class waferCollation(c.collation):
 
 
 class waferCollation_Bilbao(waferCollation):
-    """Actually "Bilbao"."""
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
         database:str = 'beLaboratory', collection:str = 'components'):
@@ -804,6 +803,24 @@ class waferCollation_Como(waferCollation):
 
         if 'CO' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Como" wafer.')
+
+        # raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
+
+
+class waferCollation_Cordoba(waferCollation):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+            database:str = 'beLaboratory', collection:str = 'components'):
+
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=60,
+            barsCheckNumber=6,
+            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1], # Check!
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
+            waferMaskLabel = 'Cordoba'
+        )
+
+        if 'CA' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Cordoba" wafer.')
 
         # raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
