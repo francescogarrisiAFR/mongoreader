@@ -42,16 +42,15 @@ class waferCollation(c.collation):
             chipsCheckNumber:int = None,
             chipBlueprintCheckNumber:int = None,
             barsCheckNumber:int = None,
-            chipsKeyCriterion:callable,
-            barsKeyCriterion:callable,
+            chipsKeyCriterion:callable = None,
+            barsKeyCriterion:callable = None,
+            testChipsKeyCriterion:callable = None,
             ):
         """Initialization method of the waferCollation class.
 
         The main purpose of this method is to retrieve the wafer, bars, and
         chip components from the database and assign them to the corresponding
         attributes of the waferCollation instance.
-
-        It also 
 
         This __init__ method is meant to be called __init__ of subclasses of  
         waferCollation. Some arguments have to be defined in the subclass
@@ -70,17 +69,23 @@ class waferCollation(c.collation):
                 component). Defaults to 'components'.
 
         Keyword args:
-            chipsKeyCriterion (callable): A function that takes the name of a
-                chip as argument and returns the key to be used in the
+            chipsKeyCriterion (callable, optional): A function that takes the
+                name of a chip as argument and returns the key to be used in the
                 chipsDictionary. (e.g. "2CDM0005_DR8-01" -> "DR8-01").
-                Defaults to None.
+                Defaults to None, in which case the chip dictionary is not
+                initialized.
             barsKeyCriterion (callable): As above, for the bars. Defaults to
-                None.
+                None, in which case the dictionary is not initialized.
+            testChipsKeyCriterion (callable, optional): Works similarly to
+                chipsKeyCriterion, but is used to defined the test chip dict.
+                Defaults to None, in which case the test chip dictionary is not
+                initialized.
             waferMaskLabel (str): To be passed by the subclass of
                 waferCollation. Defaults to None, but raises an error if it
                 raises ImplementationError if it is not passed as a string.
             chipsCheckNumber (int, optional): If passed, __init__ checks that
                 the amount of retrieved chip corresponds to this number.
+                This must include both normal and test chips.
                 Defaults to None.
             chipBlueprintCheckNumber (int, optional): If passed, __init__ 
                 checks that the amount of retrieved chip blueprints corresponds
@@ -111,13 +116,43 @@ class waferCollation(c.collation):
 
         with opened(connection):
         
-            self.chips = self.collectChips(chipsCheckNumber)
+            # Collecting chips and bars
+            self.allChips = self.collectChips(chipsCheckNumber) # Normal and test
             self.bars = self.collectBars(barsCheckNumber)
         
-            self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+            # Defining chips and testChips dicts
+
+            if chipsKeyCriterion is not None:
+                self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+            else:
+                self.chipsDict = None
+                log.warning('The chips dictionary was not defined.')
+
+            if testChipsKeyCriterion is not None:
+                self.testChipsDict = self.defineChipsDict(testChipsKeyCriterion)
+            else:
+                self.testChipsDict = None
+                log.spare('The test chips dictionary was not defined.')
+
+            # Defining chips and testChips attributes
+
+            if self.chipsDict is not None:
+                self.chips = list(self.chipsDict.values())
+    
+            if self.testChipsDict is not None:
+                self.testChips = list(self.testChipsDict.values())
+
+            # Chip blueprints and dict
+
             self.chipBlueprints, self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
-            
-            self.barsDict = self.defineBarsDict(barsKeyCriterion)
+
+            # barsDict
+
+            if barsKeyCriterion is not None:           
+                self.barsDict = self.defineBarsDict(barsKeyCriterion)
+            else:
+                log.warning('The bars dictionary was not defined.')
+                self.barsDict = None
             
         self.waferMaskLabel = waferMaskLabel
 
@@ -153,8 +188,10 @@ class waferCollation(c.collation):
         else:
             if not isID(waferName_orID):
                 raise TypeError('"waferName_orID" must be a string or an ID.')
+           
+            with mom.logMode(mom.log, 'WARNING'):
+                wafer = mom.importWafer(waferName_orID, self.connection, verbose = False)
 
-            wafer = mom.importWafer(waferName_orID, self.connection)
             if wafer is None:
                 raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
 
@@ -234,7 +271,8 @@ class waferCollation(c.collation):
             if checkNumber < 0:
                 raise ValueError('"checkNumber" must be a positive integer or None.')
 
-        chips = self.wafer.retrieveChildrenComponents(self.connection)
+        with mom.logMode(mom.log, 'WARNING'):
+            chips = self.wafer.retrieveChildrenComponents(self.connection)
 
         log.info(f'Collected {len(chips)} chips')
         for ind, chip in enumerate(chips):
@@ -257,7 +295,9 @@ class waferCollation(c.collation):
             waferBlueprint: The retrieved wafer blueprint document.
         """
 
-        wbp = self.wafer.retrieveWaferBlueprint(self.connection)
+        with mom.logMode(mom.log, 'WARNING'):
+            wbp = self.wafer.retrieveWaferBlueprint(self.connection)
+    
         if wbp is None:
             raise DocumentNotFound('Could not retrieve the wafer blueprint.')
 
@@ -293,16 +333,17 @@ class waferCollation(c.collation):
         chipBlueprintIDs = []
         
         with opened(self.connection):
-            for serial, chip in self.chipsDict.items():
-                bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
-                
-                if bp is None:
-                    raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{serial}".')
+            with mom.logMode(mom.log, 'WARNING'):
+                for serial, chip in self.chipsDict.items():
+                    bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
+                    
+                    if bp is None:
+                        raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{serial}".')
 
-                chipBPdict[serial] = bp
-                if bp.ID not in chipBlueprintIDs:
-                    chipBlueprintIDs.append(bp.ID)
-                    chipBlueprints.append(bp)
+                    chipBPdict[serial] = bp
+                    if bp.ID not in chipBlueprintIDs:
+                        chipBlueprintIDs.append(bp.ID)
+                        chipBlueprints.append(bp)
 
         if checkNumber is not None:
             if len(chipBlueprints) != checkNumber:
@@ -335,6 +376,9 @@ class waferCollation(c.collation):
                 >>>     ...
                 >>> }
 
+                If keyCriterion(chip) returns None, that chip is skipped and 
+                not included in the dictionary (useful to select/exclude test chips).
+
                 chipLabel must correspond to the 'nameSerial' field of the
                 corresponding opticalChipBlueprint.
 
@@ -342,11 +386,21 @@ class waferCollation(c.collation):
             dict: The optical chip dictionary.
         """
 
-        if self.chips is None:
+        if self.allChips is None:
             log.warning('Could not instanciate chipsDict as self.chips is None.')
             return {}
+        
+        
+        generatedKeys = []
+        selectedChips = []
 
-        return {keyCriterion(chip.name): chip for chip in self.chips}
+        for chip in self.allChips:
+            newKey = keyCriterion(chip.name)
+            if newKey is not None:
+                generatedKeys.append(newKey)
+                selectedChips.append(chip)
+
+        return {key: chip for key, chip in zip(generatedKeys, selectedChips)}
 
     def defineBarsDict(self, keyCriterion:callable):
         """Used to define a dictionary with 'barLabel': <barComponent>
@@ -810,11 +864,25 @@ class waferCollation_Como(waferCollation):
 class waferCollation_Cordoba(waferCollation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
             database:str = 'beLaboratory', collection:str = 'components'):
+        
+        def chipCriterion(chipName):
+            if 'T1' in chipName or 'T2' in chipName:
+                return None
+            else:
+                return chipName.rsplit('_', maxsplit = 1)[1]
+        
+        def testChipCriterion(chipName):
+            if 'T1' in chipName or 'T2' in chipName:
+                return chipName.rsplit('_', maxsplit = 1)[1]
+            else:
+                return None
+        
 
         super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=60,
+            chipsCheckNumber=90, # 60 normal chips + 30 test chips
             barsCheckNumber=6,
-            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1], # Check!
+            chipsKeyCriterion= chipCriterion,
+            testChipsKeyCriterion= testChipCriterion,
             barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
             waferMaskLabel = 'Cordoba'
         )
