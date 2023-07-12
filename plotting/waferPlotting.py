@@ -648,6 +648,7 @@ class _waferPlotter:
             printLabels = printChipLabels,
             labelsDirection = chipLabelsDirection,
             dpi = dpi,
+            chipGroups = chipGroups
             )
 
         return fig, ax

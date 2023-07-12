@@ -138,9 +138,13 @@ class waferCollation(c.collation):
 
             if self.chipsDict is not None:
                 self.chips = list(self.chipsDict.values())
+            else:
+                self.chips = None
     
             if self.testChipsDict is not None:
                 self.testChips = list(self.testChipsDict.values())
+            else:
+                self.testChips = None
 
             # Chip blueprints and dict
 
@@ -538,13 +542,18 @@ class waferCollation(c.collation):
         else:
             return returnDict
 
-    def plotChipStatus(self, colorDict = None):
+    def plotAllChipStatus(self, colorDict = None):
+
+        if self.allChips is None:
+            log.warning(f'The collation of wafer "{self.wafer.name}" has no allChips attribute. Nothing printed.')
+            return
 
         dataDict = {}
-        for chip in self.chips:
+        for chip in self.allChips:
             dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
             
         plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+
         plt.plotData_chipScale(dataDict, dataType = 'string',
             title = 'Chip status',
             colormapName='rainbow',
@@ -553,6 +562,57 @@ class waferCollation(c.collation):
             colorDict=colorDict
             )
 
+    def plotChipStatus(self, colorDict = None):
+
+        if self.chips is None:
+            log.warning(f'The collation of wafer "{self.wafer.name}" has no chips attribute. Nothing printed.')
+            return
+
+        dataDict = {}
+        for chip in self.chips:
+            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
+            
+        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+
+        if 'waferChips' in self.waferBlueprint.getWaferChipGroupNames():
+            chipGroups = ['waferChips']
+        else:
+            chipGroups = None
+
+        plt.plotData_chipScale(dataDict, dataType = 'string',
+            title = 'Chip status',
+            colormapName='rainbow',
+            waferName = self.wafer.name,
+            printChipLabels = True,
+            colorDict=colorDict,
+            chipGroups = chipGroups
+            )
+        
+    def plotTestChipStatus(self, colorDict = None):
+
+        if self.testChips is None:
+            log.warning(f'The collation of wafer "{self.wafer.name}" has no test chip attribute. Nothing printed.')
+            return
+
+        dataDict = {}
+        for chip in self.testChips:
+            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
+            
+        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+
+        if 'testChips' in self.waferBlueprint.getWaferChipGroupNames():
+            chipGroups = ['testChips']
+        else:
+            chipGroups = None
+
+        plt.plotData_chipScale(dataDict, dataType = 'string',
+            title = 'Chip status',
+            colormapName='rainbow',
+            waferName = self.wafer.name,
+            printChipLabels = True,
+            colorDict=colorDict,
+            chipGroups = chipGroups
+            )
 
     def plotDatasheetData(self,
         resultName:str,
