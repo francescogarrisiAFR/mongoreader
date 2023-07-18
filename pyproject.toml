@@ -1,0 +1,45 @@
+[build-system]
+requires = [ "setuptools>=41", "wheel", "setuptools-git-versioning<2", ]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mongoreader*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mongoreader.__version__"}
+
+[project]
+name = "mongoreader"
+description = "Package for plotting data from MongoDB"
+license = { text = "AGPLv3+" }
+requires-python = ">=3.9"
+authors = [
+  { name = "Francesco Garrisi", email = "Francesco.Garrisi@fiber-resources.com" },
+]
+keywords = []
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: AGPLv3+ License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+  "colorama>=0.4.6",
+  "keyring>=23.13.1",
+  "pymongo>=4.3.3",
+  "pytz>=2022.7",
+  "numpy>=1.24.1",
+  "mongomanager>=1.18.0",
+  "numpy>=1.24.1",
+  "matplotlib>=3.6.2",
+]
+dynamic = ["version"]
