@@ -1,0 +1,14 @@
+image: ubuntu-afr-builder
+
+stages:
+  - build-package
+
+build-package:
+  stage: build-package
+  script:
+    - python -m build
+    - python -m twine upload --repository-url http://pypi.fiber-resources.com ./dist/*
+  only:
+    - tags
+  tags:
+    - docker
