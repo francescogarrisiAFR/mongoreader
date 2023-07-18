@@ -194,7 +194,7 @@ class waferCollation(c.collation):
                 raise TypeError('"waferName_orID" must be a string or an ID.')
            
             with mom.logMode(mom.log, 'WARNING'):
-                wafer = mom.importWafer(waferName_orID, self.connection, verbose = False)
+                wafer = mom.importWafer(waferName_orID, self.connection)
 
             if wafer is None:
                 raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
