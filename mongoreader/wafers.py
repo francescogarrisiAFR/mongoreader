@@ -328,13 +328,15 @@ class waferCollation(c.collation):
                 chip blueprint.
 
         Returns:
-            (List[blueprint], dict): The list of retrieved optical chip and
-                a dictionary in the form
+            (List[blueprint], dict): The list of retrieved optical chip
+                blueprints and a dictionary in the form
                 >>> {
                 >>>     <chip serial>: <optical chip blueprint>,
                 >>>     ...
                 >>> }
                 that associates a chip serial with its blueprint.
+                N.B. The key is of the *chip* serial, the value is the
+                chip *blueprint*. 
         """
 
         chipBPdict = {}
@@ -364,7 +366,31 @@ class waferCollation(c.collation):
 
 
     def collectTestChipBlueprints(self, checkNumber:int = None):
+        """Queries the database for test optical chip blueprint associated to
+        the collation chips.
         
+        checkNumber (int, optional): If passed, it checks that the amount of
+            test chips blueprint found corresponds to this number. Defaults to
+            None.
+
+        Raises:
+            TypeError: If arguments are not specified correctly.
+            ValueError: If arguments are not specified correctly.
+            DocumentNotFound: If any of the collation test chip has no
+                associated blueprint.
+
+        Returns:
+            (List[blueprint], dict): The list of retrieved test optical chip 
+                blueprints and a dictionary in the form
+                >>> {
+                >>>     <test chip serial>: <optical test chip blueprint>,
+                >>>     ...
+                >>> }
+                that associates a chip serial with its blueprint.
+                N.B. The key is of the *chip* serial, the value is the
+                chip *blueprint*. 
+        """
+
         testChipBPdict = {}
         testChipBlueprints = []
         testChipBlueprintIDs = []
