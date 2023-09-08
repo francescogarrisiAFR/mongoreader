@@ -530,6 +530,9 @@ class waferCollation(c.collation):
             for bp in self.chipBlueprints: bp.mongoRefresh(self.connection)
             log.spare(f'Refreshed chip blueprints.')
 
+            for bp in self.testChipBlueprints: bp.mongoRefresh(self.connection)
+            log.spare(f'Refreshed chip blueprints.')
+
 
     # ---------------------------------------------------
     # Data retrieval methods
@@ -989,12 +992,14 @@ class waferCollation_Cordoba(waferCollation):
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
             database:str = 'beLaboratory', collection:str = 'components'):
         
+        @staticmethod
         def chipCriterion(chipName):
             if 'T1' in chipName or 'T2' in chipName:
                 return None
             else:
                 return chipName.rsplit('_', maxsplit = 1)[1]
         
+        @staticmethod
         def testChipCriterion(chipName):
             if 'T1' in chipName or 'T2' in chipName:
                 return chipName.rsplit('_', maxsplit = 1)[1]
