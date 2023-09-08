@@ -41,6 +41,7 @@ class waferCollation(c.collation):
             waferMaskLabel:str = None,
             chipsCheckNumber:int = None,
             chipBlueprintCheckNumber:int = None,
+            testChipBlueprintCheckNumber:int = None,
             barsCheckNumber:int = None,
             chipsKeyCriterion:callable = None,
             barsKeyCriterion:callable = None,
@@ -149,6 +150,10 @@ class waferCollation(c.collation):
             # Chip blueprints and dict
 
             self.chipBlueprints, self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
+
+            # Test chip blueprints and dict
+
+            self.testChipBlueprints, self.testChipBPdict = self.collectTestChipBlueprints(testChipBlueprintCheckNumber)
 
             # barsDict
 
@@ -351,11 +356,44 @@ class waferCollation(c.collation):
 
         if checkNumber is not None:
             if len(chipBlueprints) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} different blueprints. Instead, I found {len(chipBlueprints)}.')
+                log.warning(f'I expected to find {checkNumber} different chip blueprints. Instead, I found {len(chipBlueprints)}.')
 
         log.info(f'Collected {len(chipBlueprints)} different chip blueprints.')
 
         return chipBlueprints, chipBPdict
+
+
+    def collectTestChipBlueprints(self, checkNumber:int = None):
+        
+        testChipBPdict = {}
+        testChipBlueprints = []
+        testChipBlueprintIDs = []
+        
+        with opened(self.connection):
+            with mom.logMode(mom.log, 'WARNING'):
+
+                testChipsDict = self.testChipsDict
+
+                if not(testChipsDict is None or testChipsDict == {}):
+
+                    for serial, chip in self.testChipsDict.items():
+                        bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
+                        
+                        if bp is None:
+                            raise DocumentNotFound(f'Could not retrieve the blueprint associated to the test chip "{serial}".')
+
+                        testChipBPdict[serial] = bp
+                        if bp.ID not in testChipBlueprintIDs:
+                            testChipBlueprintIDs.append(bp.ID)
+                            testChipBlueprints.append(bp)
+
+        if checkNumber is not None:
+            if len(testChipBlueprints) != checkNumber:
+                log.warning(f'I expected to find {checkNumber} different test chip blueprints. Instead, I found {len(testChipBlueprints)}.')
+
+        log.info(f'Collected {len(testChipBlueprintIDs)} different test chip blueprints.')
+
+        return testChipBlueprints, testChipBPdict
 
     def defineChipsDict(self, keyCriterion:callable):
         """Used to define a dictionary with 'chipLabel': <chipComponent>
@@ -940,6 +978,8 @@ class waferCollation_Cordoba(waferCollation):
 
         super().__init__(connection, waferName_orCmp_orID, database, collection,
             chipsCheckNumber=90, # 60 normal chips + 30 test chips
+            chipBlueprintCheckNumber=3,
+            testChipBlueprintCheckNumber=2,
             barsCheckNumber=6,
             chipsKeyCriterion= chipCriterion,
             testChipsKeyCriterion= testChipCriterion,
