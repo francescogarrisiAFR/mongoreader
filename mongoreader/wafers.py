@@ -989,31 +989,31 @@ class waferCollation_Como(waferCollation):
 
 
 class waferCollation_Cordoba(waferCollation):
+    
+    @staticmethod
+    def chipCriterion(chipName):
+        if 'T1' in chipName or 'T2' in chipName:
+            return None
+        else:
+            return chipName.rsplit('_', maxsplit = 1)[1]
+
+    @staticmethod
+    def testChipCriterion(chipName):
+        if 'T1' in chipName or 'T2' in chipName:
+            return chipName.rsplit('_', maxsplit = 1)[1]
+        else:
+            return None
+    
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
             database:str = 'beLaboratory', collection:str = 'components'):
         
-        @staticmethod
-        def chipCriterion(chipName):
-            if 'T1' in chipName or 'T2' in chipName:
-                return None
-            else:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-        
-        @staticmethod
-        def testChipCriterion(chipName):
-            if 'T1' in chipName or 'T2' in chipName:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-            else:
-                return None
-        
-
         super().__init__(connection, waferName_orCmp_orID, database, collection,
             chipsCheckNumber=90, # 60 normal chips + 30 test chips
             chipBlueprintCheckNumber=3,
             testChipBlueprintCheckNumber=2,
             barsCheckNumber=6,
-            chipsKeyCriterion= chipCriterion,
-            testChipsKeyCriterion= testChipCriterion,
+            chipsKeyCriterion= self.chipCriterion,
+            testChipsKeyCriterion= self.testChipCriterion,
             barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
             waferMaskLabel = 'Cordoba'
         )
