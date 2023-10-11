@@ -1,7 +1,22 @@
 image: ubuntu-afr-builder
 
 stages:
+  - build-doc
   - build-package
+
+build-documentation:
+  stage: build-doc
+  script:
+    - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/datautils.git
+    - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/mongoutils.git
+    - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/mongomanager.git
+    - export PYTHONPATH=$PYTHONPATH:$(pwd)
+    - sphinx-build docs _build -b html
+    - rm -rf /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    - mkdir -p /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    - cp -r _build/*  /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME/.
+  tags:
+    - docker
 
 build-package:
   stage: build-package
