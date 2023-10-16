@@ -1024,6 +1024,40 @@ class waferCollation_Cordoba(waferCollation):
         # raise NotImplementedError('the waferCollation for the "Como" maskset has not yet been defined.')
 
 
+class waferCollation_Coimbra(waferCollation):
+    
+
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
+            database:str = 'beLaboratory', collection:str = 'components'):
+        
+        def chipCriterion(chipName):
+            if 'AM70' in chipName or 'QR' in chipName:
+                return chipName.rsplit('_', maxsplit = 1)[1]
+            else:
+                return None
+
+        def testChipCriterion(chipName):
+            if 'T1' in chipName or 'T2' in chipName:
+                return chipName.rsplit('_', maxsplit = 1)[1]
+            else:
+                return None
+
+
+        super().__init__(connection, waferName_orCmp_orID, database, collection,
+            chipsCheckNumber=108, # 76 normal chips + 32 test chips
+            chipBlueprintCheckNumber=2,
+            testChipBlueprintCheckNumber=2,
+            barsCheckNumber=5,
+            chipsKeyCriterion= chipCriterion,
+            testChipsKeyCriterion= testChipCriterion,
+            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
+            waferMaskLabel = 'Coimbra'
+        )
+
+        if 'CB' not in self.wafer.name:
+            log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Coimbra" wafer.')
+
+
 # Utilities functions
 
 def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:str = 'name'):
