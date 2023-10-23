@@ -43,6 +43,7 @@ class moduleCollation(c.collation):
     
     def __init__(self, connection:mom.connection, module,
                  *,
+                 moduleRegexSearch:bool = True,
                  moduleValidationCriterion:callable= None,
                  moduleBlueprintValidationCriterion:callable = None,
                  COSvalidationCriterion:callable= None,
@@ -50,6 +51,45 @@ class moduleCollation(c.collation):
                  chipValidationCriterion:callable= None,
                  chipBlueprintValidationCriterion:callable = None,
                  ):
+        """Initialization method for the moduleCollation class.
+
+        This method attempts to retrieve the module, COS and chip components/
+        blueprints from "module".
+
+        "module" can either be a string, and ID, or a component.
+        In the two former cases, the method will attempt a query on the
+        database.
+
+        The [name]ValidationCriterion arguments are functions that can be
+        used to validate the component/blueprint once it is imported from the
+        database.
+
+        Apart from the module, this method will not raise Exceptions if the
+        search fails, but it will only issue warnings.
+
+        Args:
+            connection (mongomanager.connection): The connection instance to 
+                the MongoDB server.
+            module (mongomanager.component | str | ID): The module used for
+                reference
+            moduleRegexSearch (bool, optional): If True, when "module" is a
+                string it is considered a regex pattern (case insensitive).
+                Notice that parenthesis in the pattern have a specific regex
+                behaviour! This is a reason why you may want to put choose
+                regex = False. Defaults to True.
+            moduleValidationCriterion (callable, optional): See above. Defaults
+                to None.
+            moduleBlueprintValidationCriterion (callable, optional): See above.
+                Defaults to None.
+            COSvalidationCriterion (callable, optional): See above. Defaults to
+                None.
+            COSblueprintValidationCriterion (callable, optional): See above.
+                Defaults to None.
+            chipValidationCriterion (callable, optional): See above. Defaults to
+                None.
+            chipBlueprintValidationCriterion (callable, optional): See above.
+                Defaults to None.
+        """        
         
         if not isinstance(connection, mom.connection):
             raise TypeError('"connection" must be a mongomanager connection object.')
@@ -67,13 +107,13 @@ class moduleCollation(c.collation):
         self.chipBlueprint = None
 
         self._collectDocuments(connection, module,
-
                             moduleValidationCriterion,
                             moduleBlueprintValidationCriterion,
                             COSvalidationCriterion,
                             COSblueprintValidationCriterion,
                             chipValidationCriterion,
-                            chipBlueprintValidationCriterion)
+                            chipBlueprintValidationCriterion,
+                            moduleRegexSearch)
 
     def __repr__(self):
 
@@ -93,7 +133,8 @@ class moduleCollation(c.collation):
                             COSvalidationCriterion,
                             COSblueprintValidationCriterion,
                             chipValidationCriterion,
-                            chipBlueprintValidationCriterion):
+                            chipBlueprintValidationCriterion,
+                            moduleRegexSearch:bool = True):
         """Collects all the components and blueprints associated to the module.
 
         Args:
@@ -106,7 +147,8 @@ class moduleCollation(c.collation):
 
                 self.module = self._collectModule(connection,
                                             module,
-                                            moduleValidationCriterion)
+                                            moduleValidationCriterion,
+                                            regex = moduleRegexSearch)
                 
                 self.COS = self._collectCOS(connection,
                                             self.module,
@@ -133,7 +175,8 @@ class moduleCollation(c.collation):
 
     @staticmethod
     def _collectModule(connection:mom.connection, module,
-                      moduleValidationCriterion:callable = None) -> mom.component:
+                      moduleValidationCriterion:callable = None,
+                      regex:bool = True) -> mom.component:
         """Import the module from the server.
 
         Args:
@@ -175,7 +218,13 @@ class moduleCollation(c.collation):
         # module name (string)
         elif isinstance(module, str):
 
-            mod = mom.component.queryOne(connection, qu.regex('name', module), returnType='component')
+            if regex:
+                query = qu.regex('name', module, caseSensitive=False)
+            else:
+                query = {'name': module}
+            
+            mod = mom.component.queryOne(connection, query, returnType='component')
+            
             if mod is None:
                 raise mom.DocumentNotFound(f'Could not query module "{module}".')
 
