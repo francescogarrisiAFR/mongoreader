@@ -99,7 +99,8 @@ class chipGoggleFunctions:
             testHistory:list,
             resultName_orNames, 
             locationNames:str,
-            searchDatasheetReady:bool = True) -> dict:
+            searchDatasheetReady:bool = True,
+            processStageList=None) -> dict:
         """This function scoops the test history of a component to return a 
         dataDict dictionary or a dictionary of dataDict dictionaries (depending
         on wether "resultName_orNames" is a single string or a list of strings.
@@ -140,10 +141,18 @@ class chipGoggleFunctions:
 
 
         # Scooping results from all the test history entries.
-
-        allScooped = [cls.scoopResultsFromTestEntry(entry,
-            resultName_orNames, locationNames, searchDatasheetReady)
-            for entry in reversed(testHistory)] # Most recent is scooped first
+        if processStageList:
+            allScooped=[]
+            for entry in reversed(testHistory):
+                if entry.get('processStage'):
+                    if entry['processStage'] in processStageList:
+                         allScooped.append(cls.scoopResultsFromTestEntry(
+                             entry,
+                             resultName_orNames, locationNames, searchDatasheetReady))
+        else:
+            allScooped = [cls.scoopResultsFromTestEntry(entry,
+                resultName_orNames, locationNames, searchDatasheetReady)
+                for entry in reversed(testHistory)] # Most recent is scooped first
 
         while None in allScooped: allScooped.remove(None)
 
@@ -191,7 +200,9 @@ class chipGoggleFunctions:
     @classmethod
     def datasheedData(cls, chip,
             resultName_orNames,
-            locationNames:list):
+            locationNames:list,
+            searchDatasheetReady=True,
+            processStageList=None):
         """
         This function is used to search the test history of "chip" for results
         of tests. It searches results named after "resultName_orNames".
@@ -213,7 +224,8 @@ class chipGoggleFunctions:
 
         history = chip.getField('testHistory', valueIfNotFound = [], verbose = False)
         scoopedDict = cls.scoopResultsFromHistory(history,
-            resultName_orNames, locationNames, searchDatasheetReady=True)                       
+            resultName_orNames, locationNames, searchDatasheetReady=searchDatasheetReady,
+            processStageList=processStageList)                       
 
         if isinstance(resultName_orNames, str):
             return scoopedDict[resultName_orNames]
