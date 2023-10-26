@@ -37,8 +37,8 @@ class _waferPlotter:
         with opened(connection):
             self.waferBP = waferBP
             self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
-            self.allowedGroups = waferBP.getWaferChipGroupNames()
-            self.allChipLabels = waferBP.getWaferChipSerials()
+            self.allowedGroups = waferBP.retrieveChipBlueprintGroupNames()
+            self.allChipLabels = waferBP.retrieveChipBlueprintLabels()
 
         # Should be retrieved from waferBP's "geometry" field.
         self.D = 101.6 # Wafer plot diameter in mm
@@ -63,6 +63,7 @@ class _waferPlotter:
         """
 
         if groups is None:
+            log.debug(f'[_chipGroupLabels] Returning all labels: {self.allChipLabels}')
             return self.allChipLabels
 
         allowedGroupString = ', '.join([f'"{g}"' for g in self.allowedGroups])
@@ -76,7 +77,10 @@ class _waferPlotter:
 
         labels = []
         for group in groups:
-            labels += self.waferBP.getWaferChipSerials(group)
+            log.debug(f'[_chipGroupLabels] group: "{group}"')
+            newLabels = self.waferBP.retrieveWaferGroup(group)
+            log.debug(f'[_chipGroupLabels] newLabels: "{newLabels}"')
+            labels += newLabels
         return labels
         
     
@@ -94,6 +98,8 @@ class _waferPlotter:
             2-tuple: p1, p2, where p1 is a (x, y) tuple of floats, representing
                 coordinates in microns.
         """        
+
+        log.debug(f'[_chipP1P2] chipLabel: "{chipLabel}".')
 
         if not chipLabel in self.allChipLabels:
             raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
@@ -118,6 +124,8 @@ class _waferPlotter:
         Returns:
             mongoreader.patches.rectPatch: The patch for the rectangle.
         """        
+
+        log.debug(f'[_chipPatch] chipLabel: "{chipLabel}".')
 
         p1, p2 = self._chipP1P2(chipLabel)
         
@@ -470,15 +478,17 @@ class _waferPlotter:
     
         rangeMin, rangeMax = None, None
 
+        log.debug(f'[_allChipSubpatches] dataDict: {dataDict}')
+        
         if dataType == 'float':
             # Determining ranges
             rangeMin, rangeMax = autoRangeDataDict(dataDict,
                     dataRangeMin, dataRangeMax)
         
-
         chipLabels = list(dataDict.keys())
+        log.debug(f'[_allChipSubpatches] chipLabels: {chipLabels}')
         chipValues = list(dataDict.values())
-        
+        log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
 
         if dataType == 'float':
             chipColors, _, _ = c.floatsColors(chipValues, colormapName,
@@ -902,7 +912,7 @@ def autoRangeDataDict(dataDict:dict,
 
 
 
-def waferPlotter(connection, maskSet:str):
+def waferPlotter(connection, blueprint_orID_orName):
     """This function is used to return an instance of the correct sub-class
     of the waferPlotter class, based on the maskSet name.
 
@@ -922,24 +932,13 @@ def waferPlotter(connection, maskSet:str):
         _waferPlotter: The correct wafer plotter instance.
     """    
 
-    blueprintIDs = {
-        'Bilbao': '63c045efeb57e74cb519be89', # "Bilbao wafer"
-        'Budapest': '6398434725e51a373ac387fb', # "Budapest wafer"
-        'Cambridge': '642592f497d3cc3392ab4202', # "Cambridge wafer"
-        'Como': '64527c200ea7db9a6eb39a22', # "Como wafer"
-        'Cordoba': '64ae662d75b1bb3bc80e3753', # "Cordoba wafer"
-        'Coimbra': '652d130551e31c7239b99545', # "Coimbra wafer"
-    }
-    masksetString = ', '.join([f'"{m}"' for m in blueprintIDs.keys()])
-
-
-    if not isinstance(maskSet, str):
-        raise TypeError('"maskSet" must be a string.')
-    if not maskSet in blueprintIDs.keys():
-        raise TypeError(f'"maskSet" must be among {masksetString}.')
-
-    ID = blueprintIDs[maskSet]
-
-    waferBP = importWaferBlueprint(ID, connection)
+    if isinstance(blueprint_orID_orName, waferBlueprint):
+        waferBP = blueprint_orID_orName
+    elif isinstance(blueprint_orID_orName, str):
+        waferBP = waferBlueprint.queryOneByName(connection, blueprint_orID_orName)
+    elif isID(blueprint_orID_orName):
+        waferBP = importWaferBlueprint(waferBP, connection)
+    else:
+        raise TypeError('"blueprint_orID_orName" must be the wafer blueprint, or its name, or its ID.')
 
     return _waferPlotter(connection, waferBP = waferBP)

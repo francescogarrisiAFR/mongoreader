@@ -35,18 +35,21 @@ class waferCollation(c.collation):
 
     """
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components',
-            *,
-            waferMaskLabel:str = None,
-            chipsCheckNumber:int = None,
-            chipBlueprintCheckNumber:int = None,
-            testChipBlueprintCheckNumber:int = None,
-            barsCheckNumber:int = None,
-            chipsKeyCriterion:callable = None,
-            barsKeyCriterion:callable = None,
-            testChipsKeyCriterion:callable = None,
-            ):
+    checkNumber_chips = None
+    checkNumber_testChips = None
+    checkNumber_bars = None
+    checkNumber_testCells = None
+
+    checkNumber_chipBlueprints = None
+    checkNumber_testChipBlueprints = None
+    checkNumber_barBlueprints = None
+    checkNumber_testCellBlueprints = None
+
+    chipLabelCriterion = None
+    testLabelCriterion = None
+    barLabelCriterion = None
+
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
         """Initialization method of the waferCollation class.
 
         The main purpose of this method is to retrieve the wafer, bars, and
@@ -105,77 +108,58 @@ class waferCollation(c.collation):
 
         self.connection = connection
 
-        if isinstance(waferName_orCmp_orID, mom.wafer):
-            self.wafer = waferName_orCmp_orID
-        else:
-            self.wafer = self.collectWafer(waferName_orCmp_orID, database, collection)
-
-        self.waferBlueprint = self.collectWaferBlueprint()
-        
-        if not isinstance(waferMaskLabel, str):
-            raise e.ImplementationError('"waferMaskLabel" must be a string.')
-
         with opened(connection):
-        
-            # Collecting chips and bars
-            self.allChips = self.collectChips(chipsCheckNumber) # Normal and test
-            self.bars = self.collectBars(barsCheckNumber)
-        
-            # Defining chips and testChips dicts
 
-            if chipsKeyCriterion is not None:
-                self.chipsDict = self.defineChipsDict(chipsKeyCriterion)
+            # Collecting wafer
+
+            if isinstance(waferName_orCmp_orID, mom.wafer):
+                self.wafer = waferName_orCmp_orID
             else:
-                self.chipsDict = None
-                log.warning('The chips dictionary was not defined.')
+                self.wafer = self.collectWafer(waferName_orCmp_orID)
 
-            if testChipsKeyCriterion is not None:
-                self.testChipsDict = self.defineChipsDict(testChipsKeyCriterion)
-            else:
-                self.testChipsDict = None
-                log.spare('The test chips dictionary was not defined.')
+            # Collecting wafer blueprint
 
-            # Defining chips and testChips attributes
-
-            if self.chipsDict is not None:
-                self.chips = list(self.chipsDict.values())
-            else:
-                self.chips = None
-    
-            if self.testChipsDict is not None:
-                self.testChips = list(self.testChipsDict.values())
-            else:
-                self.testChips = None
-
-            # Chip blueprints and dict
-
-            self.chipBlueprints, self.chipBPdict = self.collectChipBlueprints(chipBlueprintCheckNumber)
-
-            # Test chip blueprints and dict
-
-            self.testChipBlueprints, self.testChipBPdict = self.collectTestChipBlueprints(testChipBlueprintCheckNumber)
-
-            # barsDict
-
-            if barsKeyCriterion is not None:           
-                self.barsDict = self.defineBarsDict(barsKeyCriterion)
-            else:
-                log.warning('The bars dictionary was not defined.')
-                self.barsDict = None
+            self.waferBlueprint = self.collectWaferBlueprint(self.wafer)
             
-        self.waferMaskLabel = waferMaskLabel
+        
+            # Collecting chip blueprints
+            self.chipBlueprints, self.chipBPdict = \
+                 self.collectChipBlueprints(self.waferBlueprint)
+
+            # Collecting test chip blueprints
+            self.testChipBlueprints, self.testChipBPdict = \
+                 self.collectTestChipBlueprints(self.waferBlueprint)
+
+            # Collecting bar blueprints
+            self.barBlueprints, self.barBPdict = \
+                 self.collectBarBlueprints(self.waferBlueprint)
+
+            # Collecting test cell blueprints
+            self.testCellBlueprints, self.testCellBPdict = \
+                 self.collectTestCellBlueprints(self.waferBlueprint)
+
+            
+            # Collecting chips, testChips and bars
+            self.chips, self.chipsDict, \
+            self.testChips, self.testChipsDict, \
+            self.bars, self.barsDict = \
+                self.collectChipsalike(self.wafer,
+                            self.chipBlueprints, self.chipBPdict,
+                            self.testChipBlueprints, self.testChipBPdict,
+                            self.barBlueprints, self.barBPdict,
+                            )
+            
+            # Collecting testCells
+            self.testCells, self.testCellsDict = \
+                self.collectTestCells(self.wafer, self.testCellBPdict)
+        
 
 
-    def collectWafer(self, waferName_orID,
-        database:str = 'beLaboratory', collection:str = 'components'):
+    def collectWafer(self, waferName_orID):
         """Queries the database for the specified wafer and returns it.
 
         Args:
             waferName_orID (str | ObjectId): The wafer name or its ID.
-            database (str, optional): The database where the wafer is found.
-                Defaults to 'beLaboratory'.
-            collection (str, optional): The collection where the wafer is 
-                found. Defaults to 'components'.
 
         Raises:
             DocumentNotFound: If the wafer is not found.
@@ -185,18 +169,16 @@ class waferCollation(c.collation):
             wafer: The collected wafer.
         """
 
+
         if isinstance(waferName_orID, str):
 
-            wafer = mom.queryOne(self.connection, {'name': {'$regex': waferName_orID}}, None,
-            database, collection, 'native',
-            verbose = False)
+            wafer = mom.wafer.queryOneByName(self.connection, waferName_orID,
+                            verbose = False)
         
             if wafer is None:
-                raise DocumentNotFound(f'Could not find a wafer from string "{waferName_orID}".')
+                raise DocumentNotFound(f'Could not find a wafer named "{waferName_orID}".')
 
-        else:
-            if not isID(waferName_orID):
-                raise TypeError('"waferName_orID" must be a string or an ID.')
+        elif isID(waferName_orID):
            
             with mom.logMode(mom.log, 'WARNING'):
                 wafer = mom.importWafer(waferName_orID, self.connection)
@@ -204,97 +186,14 @@ class waferCollation(c.collation):
             if wafer is None:
                 raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
 
+        else:
+            raise TypeError(f'"waferName_orID" must be a string or an ID.')
+
         log.info(f'Collected wafer "{wafer.name}"')
         return wafer
-
     
-    def collectBars(self,
-        checkNumber:int = None,
-        database:str = 'beLaboratory', collection:str = 'components'):
-        """Queries the database for bar objects whose parent component is the wafer and returns them.
 
-        Args:
-            checkNumber (int, optional): If passed, it checks that the amount
-                of bars found corresponds to this number. Defaults to None.
-            database (str, optional): The database where the bars are  found.
-                Defaults to 'beLaboratory'.
-            collection (str, optional): The collection where the bars are 
-                found. Defaults to 'components'.
-
-        Raises:
-            TypeError: If arguments are not specified correctly.
-            ValueError: If arguments are not specified correctly.
-
-        Returns:
-            List[component]: The list of retrieved bar components. May return
-                other type of mongoDocuments.
-        """        
-
-        if checkNumber is not None:
-            if not isinstance(checkNumber, int):
-                raise TypeError('"checkNumber" must be a positive integer or None.')
-            if checkNumber < 0:
-                raise ValueError('"checkNumber" must be a positive integer or None.')
-
-        wafID = self.wafer.ID
-
-        with opened(self.connection):
-            bars = mom.query(self.connection,
-                {'parentComponentID': wafID, 'componentType': 'wafer bar'},
-                None,
-                database, collection, 'native',
-                verbose = False)
-
-        log.info(f'Collected {len(bars)} bars')
-        for ind, bar in enumerate(bars):
-            log.spare(f'   {ind}: {bar.name}')
-
-        if checkNumber is not None:
-            if len(bars) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} bars. Instead, I found {len(bars)}.')
-
-        return bars
-
-
-    def collectChips(self, checkNumber:int = None):
-        """Queries the database for optical chip objects whose parent component
-        is the wafer and returns them.
-
-        Internally, the method calls .retrieveChildrenComponents() on the
-        collation's wafer.
-        
-        checkNumber (int, optional): If passed, it checks that the amount of
-            chips found corresponds to this number. Defaults to None.
-
-        Raises:
-            TypeError: If arguments are not specified correctly.
-            ValueError: If arguments are not specified correctly.
-
-        Returns:
-            List[component]: The list of retrieved chip components.
-        """
-
-        if checkNumber is not None:
-            if not isinstance(checkNumber, int):
-                raise TypeError('"checkNumber" must be a positive integer or None.')
-            if checkNumber < 0:
-                raise ValueError('"checkNumber" must be a positive integer or None.')
-
-        with mom.logMode(mom.log, 'WARNING'):
-            chips = self.wafer.retrieveChildrenComponents(self.connection)
-
-        log.info(f'Collected {len(chips)} chips')
-        for ind, chip in enumerate(chips):
-            log.spare(f'   {ind}: {chip.name}')
-
-        if checkNumber is not None:
-            if len(chips) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} chips. Instead, I found {len(chips)}.')
-
-        return chips
-        
-
-    def collectWaferBlueprint(self):
+    def collectWaferBlueprint(self, wafer):
         """Returns the wafer blueprint of the wafer.
         
         Raises:
@@ -305,7 +204,7 @@ class waferCollation(c.collation):
         """
 
         with mom.logMode(mom.log, 'WARNING'):
-            wbp = self.wafer.retrieveWaferBlueprint(self.connection)
+            wbp = wafer.retrieveBlueprint(self.connection)
     
         if wbp is None:
             raise DocumentNotFound('Could not retrieve the wafer blueprint.')
@@ -314,196 +213,175 @@ class waferCollation(c.collation):
         return wbp
 
 
-    def collectChipBlueprints(self, checkNumber:int = None):
-        """Queries the database for optical chip blueprint associated to the
-        collation chips.
-        
-        checkNumber (int, optional): If passed, it checks that the amount of
-            chips blueprint found corresponds to this number. Defaults to None.
+    def _collectChipBPalikes(self, waferBlueprint, WBPfield:str):
 
-        Raises:
-            TypeError: If arguments are not specified correctly.
-            ValueError: If arguments are not specified correctly.
-            DocumentNotFound: If any of the collation chip has no associated
-                chip blueprint.
+        log.debug(f'[_collectChipBPalikes] field: "{WBPfield}".')
 
-        Returns:
-            (List[blueprint], dict): The list of retrieved optical chip
-                blueprints and a dictionary in the form
-                >>> {
-                >>>     <chip serial>: <optical chip blueprint>,
-                >>>     ...
-                >>> }
-                that associates a chip serial with its blueprint.
-                N.B. The key is of the *chip* serial, the value is the
-                chip *blueprint*. 
-        """
+        chipBlueprintDicts = waferBlueprint.getField(WBPfield, verbose = None)
 
-        chipBPdict = {}
-        chipBlueprints = []
-        chipBlueprintIDs = []
-        
-        with opened(self.connection):
-            with mom.logMode(mom.log, 'WARNING'):
-                for serial, chip in self.chipsDict.items():
-                    bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
-                    
-                    if bp is None:
-                        raise DocumentNotFound(f'Could not retrieve the blueprint associated to chip "{serial}".')
+        if chipBlueprintDicts is None:
+            log.warning(f'No blueprints associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}".')
+            return None, None
 
-                    chipBPdict[serial] = bp
-                    if bp.ID not in chipBlueprintIDs:
-                        chipBlueprintIDs.append(bp.ID)
-                        chipBlueprints.append(bp)
+        bpDict_labelsIDs = {dic['label']: dic['ID'] for dic in chipBlueprintDicts}
 
-        if checkNumber is not None:
-            if len(chipBlueprints) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} different chip blueprints. Instead, I found {len(chipBlueprints)}.')
+        IDs = []
+        for dic in chipBlueprintDicts:
+            if dic['ID'] not in IDs:
+                IDs.append(dic['ID'])
 
-        log.info(f'Collected {len(chipBlueprints)} different chip blueprints.')
+        bpDict_IDs = {}
+        for ID in IDs:
+            bp = mom.queryOne(self.connection, ID, None,
+                    mom.blueprint.defaultDatabase,
+                    mom.blueprint.defaultCollection,
+                    returnType = 'native', verbose = False)
+            if bp is None:
+                raise DocumentNotFound(f'Could not rietrieve blueprint with ID "{ID}".')
+            bpDict_IDs[ID] = bp
 
-        return chipBlueprints, chipBPdict
+        bps = list(bpDict_IDs.values())
 
-
-    def collectTestChipBlueprints(self, checkNumber:int = None):
-        """Queries the database for test optical chip blueprint associated to
-        the collation chips.
-        
-        checkNumber (int, optional): If passed, it checks that the amount of
-            test chips blueprint found corresponds to this number. Defaults to
-            None.
-
-        Raises:
-            TypeError: If arguments are not specified correctly.
-            ValueError: If arguments are not specified correctly.
-            DocumentNotFound: If any of the collation test chip has no
-                associated blueprint.
-
-        Returns:
-            (List[blueprint], dict): The list of retrieved test optical chip 
-                blueprints and a dictionary in the form
-                >>> {
-                >>>     <test chip serial>: <optical test chip blueprint>,
-                >>>     ...
-                >>> }
-                that associates a chip serial with its blueprint.
-                N.B. The key is of the *chip* serial, the value is the
-                chip *blueprint*. 
-        """
-
-        testChipBPdict = {}
-        testChipBlueprints = []
-        testChipBlueprintIDs = []
-        
-        with opened(self.connection):
-            with mom.logMode(mom.log, 'WARNING'):
-
-                testChipsDict = self.testChipsDict
-
-                if not(testChipsDict is None or testChipsDict == {}):
-
-                    for serial, chip in self.testChipsDict.items():
-                        bp = mom.importOpticalChipBlueprint(chip.blueprintID, self.connection)
-                        
-                        if bp is None:
-                            raise DocumentNotFound(f'Could not retrieve the blueprint associated to the test chip "{serial}".')
-
-                        testChipBPdict[serial] = bp
-                        if bp.ID not in testChipBlueprintIDs:
-                            testChipBlueprintIDs.append(bp.ID)
-                            testChipBlueprints.append(bp)
-
-        if checkNumber is not None:
-            if len(testChipBlueprints) != checkNumber:
-                log.warning(f'I expected to find {checkNumber} different test chip blueprints. Instead, I found {len(testChipBlueprints)}.')
-
-        log.info(f'Collected {len(testChipBlueprintIDs)} different test chip blueprints.')
-
-        return testChipBlueprints, testChipBPdict
-
-    def defineChipsDict(self, keyCriterion:callable):
-        """Used to define a dictionary with 'chipLabel': <chipComponent>
-        key-value pairs.
-        
-        Args:
-            keyCriterion (callable): a function applied to the name (string) of
-                the chip, which returns the label to be used as the key of the
-                dictionary.
-                By default, the dictionary should use the serial of the chip 
-                (without the wafer name), so for instance:
-                
-                chip name: "2DR0001_DR8-01"
-                keyCriterion:
-                >>> lambda s: s.split('_')[1]
+        bpDict_labelsBPs = {label: bpDict_IDs[bpDict_labelsIDs[label]] for label in bpDict_labelsIDs}
             
-                keyCriterion returns "DR8-01" and the dictionary would be
-                defined as 
-                >>> {
-                >>>     'DR8-01': <2DR0001_DR8-01 chip>
-                >>>     'DR8-02': <2DR0001_DR8-02 chip>
-                >>>     ...
-                >>> }
-
-                If keyCriterion(chip) returns None, that chip is skipped and 
-                not included in the dictionary (useful to select/exclude test chips).
-
-                chipLabel must correspond to the 'nameSerial' field of the
-                corresponding opticalChipBlueprint.
-
-        Returns:
-            dict: The optical chip dictionary.
-        """
-
-        if self.allChips is None:
-            log.warning('Could not instanciate chipsDict as self.chips is None.')
-            return {}
-        
-        
-        generatedKeys = []
-        selectedChips = []
-
-        for chip in self.allChips:
-            newKey = keyCriterion(chip.name)
-            if newKey is not None:
-                generatedKeys.append(newKey)
-                selectedChips.append(chip)
-
-        return {key: chip for key, chip in zip(generatedKeys, selectedChips)}
-
-    def defineBarsDict(self, keyCriterion:callable):
-        """Used to define a dictionary with 'barLabel': <barComponent>
-        key-value pairs.
-        
-        Args:
-            keyCriterion (callable): a function applied to the name (string) of
-            the bar, which returns the label to be used as the key of the
-            dictionary.
-
-            By default, bars are labeled following the pattern:
-                <waferName>_Bar-A
-                <waferName>_Bar-B
-                <waferName>_Bar-C
-                ...
-            so, a possible keyCriterion would be:
-            >>> lambda s: s.rsplit('-', maxsplit = 1)[1]
+        for bp in bps:                
+            if not isinstance(bp, mom.blueprint):
+                log.warning(f'Some documents associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}" are not blueprints.')
             
-            keyCriterion returns "A", "B", ... and the dictionary would be
-            defined as 
-            >>> {
-            >>>     'A': <<waferName>_Bar-A>
-            >>>     'B': <<waferName>_Bar-B>
-            >>>     ...
-            >>> }
+        if bps == []: bps = None
+        if bpDict_labelsBPs == {}: bpDict_labelsBPs = None
 
-        Returns:
-            dict: The wafer bar dictionary.
-        """
+        return bps, bpDict_labelsBPs
 
-        if self.bars is None:
-            log.warning('Could not instanciate barsDict as self.bars is None.')
-            return {}
 
-        return {keyCriterion(bar.name): bar for bar in self.bars}
+    def collectChipBlueprints(self, waferBlueprint):
+        """Returns the chip blueprints associated to the wafer, without repetitions"""
+        
+        bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
+
+        amount = len(bps) if bps is not None else 0  
+        log.info(f'Collected ({amount}) chip blueprints.')
+
+        if checkNumber_chipBlueprints is not None:
+            if checkNumber_chipBlueprints != amount:
+                log.warning(f'I collected {amount} chip blueprints but I expected {checkNumber_chipBlueprints}.')
+
+        return bps, bpsDict
+
+    def collectTestChipBlueprints(self, waferBlueprint):
+        """Returns the test chip blueprints associated to the wafer, without repetitions"""
+        
+        bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'testChipBlueprints')
+        
+        amount = len(bps) if bps is not None else 0  
+        log.info(f'Collected (amount) test chip blueprints.')
+
+        if checkNumber_testChipBlueprints is not None:
+            if checkNumber_testChipBlueprints != len(bps):
+                log.warning(f'I collected {amount} test chip blueprints but I expected {checkNumber_testChipBlueprints}.')
+
+        return bps, bpsDict
+
+    def collectBarBlueprints(self, waferBlueprint):
+        """Returns the test bar blueprints associated to the wafer, without repetitions"""
+
+        bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
+        
+        amount = len(bps) if bps is not None else 0  
+        log.info(f'Collected ({amount}) bar blueprints.')
+
+        if checkNumber_barBlueprints is not None:
+            if checkNumber_barBlueprints != len(bps):
+                log.warning(f'I collected {amount} bar blueprints but I expected {checkNumber_barBlueprints}.')
+
+        return bps, bpsDict
+
+    def collectTestCellBlueprints(self, waferBlueprint):
+        """Returns the test cell blueprints associated to the wafer, without repetitions"""
+        
+        bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints')
+        
+        amount = len(bps) if bps is not None else 0        
+        log.info(f'Collected ({amount}) test cell blueprints.')
+
+        if checkNumber_testCellBlueprints is not None:
+            if checkNumber_testCellBlueprints != len(bps):
+                log.warning(f'I collected {len(bps)} test cell blueprints but I expected {checkNumber_testCellBlueprints}.')
+
+        return bps, bpsDict
+
+
+    def collectChipsalike(self, wafer,
+                     chipBPs, chipBPsDict,
+                     testBPs, testBPsDict,
+                     barBPs, barBPsDict,
+                     ):
+
+        chipBpIDs = [bp.ID for bp in chipBPs] if chipBPs is not None else []
+        testBpIDs = [bp.ID for bp in testBPs] if testBPs is not None else []
+        barBpIDs = [bp.ID for bp in barBPs] if barBPs is not None else []
+
+        allChipsalike = wafer.retrieveChildrenComponents(self.connection)
+        
+        chips = [chip for chip in allChipsalike if chip.ID in bpIDs]
+        log.info(f'Collected {len(chips)} chips.')
+
+        testChips = [chip for chip in allChipsalike if chip.ID in testBpIDs]
+        log.info(f'Collected {len(testChips)} test chips.')
+
+        bars = [chip for chip in allChipsalike if chip.ID in barBpIDs]
+        log.info(f'Collected {len(bars)} bars.')
+
+        if chipLabelCriterion is None:
+            log.warning('No label criterion for chips. chipsDict not generated.')
+            chipsDict = None
+        else:
+            chipsDict = {chipLabelCriterion(chip): chip for chip in chips}
+            if len(chipsDict) != len(chipBPsDict):
+                log.warning(f'I collected {len(chipsDict)} chips but I expected {len(chipBPsDict)}.')
+
+        if testChipLabelCriterion is None:
+            log.warning('No label criterion for test chips. testChipsDict not generated.')
+            testChipsDict = None
+        else:
+            testChipsDict = {testChipLabelCriterion(chip): chip for chip in testChips}
+            if len(testChipsDict) != len(testBPsDict):
+                log.warning(f'I collected {len(testChipsDict)} test chips but I expected {len(testBPsDict)}.')
+
+        if barLabelCriterion is None:
+            log.warning('No label criterion for bars. barsDict not generated.')
+            barsDict = None
+        else:
+            barsDict = {barLabelCriterion(bar): bar for bar in bars}
+            if len(barsDict) != len(barBPsDict):
+                log.warning(f'I collected {len(barsDict)} bars but I expected {len(barBPsDict)}.')
+
+        if chips == []: chips = None
+        if chipsDict == {}: chipsDict = None
+
+        if testChips == []: testChips = None
+        if testChipsDict == {}: testChipsDict = None
+
+        if bars == []: bars = None
+        if barsDict == {}: barsDict = None
+
+        return chips, chipsDict, testChips, testChipsDict, bars, barsDict
+
+
+    def collectTestCells(self, wafer, cellBPsDict):
+
+        cells = wafer.retrieveTestCells(self.connection)
+        log.info(f'Collected {len(cells)} test cells.')
+
+        if cellLabelCriterion is None:
+            log.warning('No label criterion for cells. cellsDict not generated.')
+            cellsDict = None
+        else:
+            cellsDict = {cellLabelCriterion(cell): cell for cell in cells}
+            if len(cellsDict) != len(cellBPsDict):
+                log.warning(f'I collected {len(cells)} test cells but I expected {len(cellBPsDict)}.')
+        
+        return cells, cellsDict
 
 
 
@@ -521,17 +399,37 @@ class waferCollation(c.collation):
             self.waferBlueprint.mongoRefresh(self.connection)
             log.spare(f'Refreshed waferBlueprint "{self.waferBlueprint.name}".')
         
-            for chip in self.chips: chip.mongoRefresh(self.connection)
-            log.spare(f'Refreshed chips.')
+            if self.chips is not None:
+                for chip in self.chips: chip.mongoRefresh(self.connection)
+                log.spare(f'Refreshed chips.')
 
-            for bar in self.bars: bar.mongoRefresh(self.connection)
-            log.spare(f'Refreshed bars.')
+            if self.testChips is not None:
+                for chip in self.testChips: chip.mongoRefresh(self.connection)
+                log.spare(f'Refreshed test chips.')
 
-            for bp in self.chipBlueprints: bp.mongoRefresh(self.connection)
-            log.spare(f'Refreshed chip blueprints.')
+            if self.testChips is not None:
+                for bar in self.bars: bar.mongoRefresh(self.connection)
+                log.spare(f'Refreshed bars.')
 
-            for bp in self.testChipBlueprints: bp.mongoRefresh(self.connection)
-            log.spare(f'Refreshed chip blueprints.')
+            if self.testChips is not None:
+                for cell in self.testCells: cell.mongoRefresh(self.connection)
+                log.spare(f'Refreshed test cells.')
+
+            if self.testChips is not None:
+                for bp in self.chipBlueprints: bp.mongoRefresh(self.connection)
+                log.spare(f'Refreshed chip blueprints.')
+
+            if self.testChips is not None:
+                for bp in self.testChipBlueprints: bp.mongoRefresh(self.connection)
+                log.spare(f'Refreshed test chip blueprints.')
+
+            if self.testChips is not None:
+                for bp in self.barBlueprints: bp.mongoRefresh(self.connection)
+                log.spare(f'Refreshed bar blueprints.')
+
+            if self.testChips is not None:
+                for bp in self.testCellBlueprints: bp.mongoRefresh(self.connection)
+                log.spare(f'Refreshed test chip blueprints.')
 
 
     # ---------------------------------------------------
@@ -609,6 +507,7 @@ class waferCollation(c.collation):
         else:
             return returnDict
 
+
     def plotAllChipStatus(self, colorDict = None):
 
         if self.allChips is None:
@@ -619,7 +518,7 @@ class waferCollation(c.collation):
         for chip in self.allChips:
             dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
             
-        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
 
         plt.plotData_chipScale(dataDict, dataType = 'string',
             title = 'Chip status',
@@ -639,9 +538,9 @@ class waferCollation(c.collation):
         for chip in self.chips:
             dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
             
-        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
 
-        if 'waferChips' in self.waferBlueprint.getWaferChipGroupNames():
+        if 'waferChips' in self.waferBlueprint.retrieveChipBlueprintGroupNames():
             chipGroups = ['waferChips']
         else:
             chipGroups = None
@@ -665,7 +564,7 @@ class waferCollation(c.collation):
         for chip in self.testChips:
             dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
             
-        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
 
         if 'testChips' in self.waferBlueprint.getWaferChipGroupNames():
             chipGroups = ['testChips']
@@ -703,7 +602,7 @@ class waferCollation(c.collation):
         
         Returns the dataDict used to generate the plot."""
 
-        plt = wplt.waferPlotter(self.connection, self.waferMaskLabel)
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
     
         dataDict = self.retrieveDatasheetData(
             resultName,
@@ -901,37 +800,27 @@ class waferCollation(c.collation):
 
 class waferCollation_Bilbao(waferCollation):
 
+    checkNumber_chips = 39
+    checkNumber_testChips = 0
+    checkNumber_bars = 3
+    checkNumber_testCells = 0
+
+    checkNumber_chipBlueprints = 3
+    checkNumber_testChipBlueprints = 0
+    checkNumber_barBlueprints = 3
+    checkNumber_testCellBlueprints = 0
+
+    chipLabelCriterion = lambda chip: chip.name.rsplit('_',maxsplit = 1)[1]
+    testLabelCriterion = lambda chip: chip.name.rsplit('-',maxsplit = 1)[1]
+    barLabelCriterion = lambda bar: bar.name[-1]
+
     def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-        database:str = 'beLaboratory', collection:str = 'components'):
+        database = None, collection = None):
     
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=39,
-            barsCheckNumber=3,
-            chipBlueprintCheckNumber = 3,
-            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
-            waferMaskLabel = 'Bilbao'
-        )
+        super().__init__(connection, waferName_orCmp_orID)
 
         if not ('BI' in self.wafer.name or 'CDM' in self.wafer.name):
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Bilbao" wafer.')
-
-    
-    # -------------------------------
-    # Goggle methods
-
-
-    def goggleData(self, goggleFunction:callable):
-        pass
-
-
-    def goggleDatasheedData(self, resultName:str, locationKey:str = None):
-
-        pass
-
-
-    # -------------------------------
-    # Plot methods
 
     
 
