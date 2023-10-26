@@ -46,8 +46,9 @@ class waferCollation(c.collation):
     checkNumber_testCellBlueprints = None
 
     chipLabelCriterion = None
-    testLabelCriterion = None
+    testChipLabelCriterion = None
     barLabelCriterion = None
+    testCellLabelCriterion = None
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID):
         """Initialization method of the waferCollation class.
@@ -232,7 +233,7 @@ class waferCollation(c.collation):
 
         bpDict_IDs = {}
         for ID in IDs:
-            bp = mom.queryOne(self.connection, ID, None,
+            bp = mom.queryOne(self.connection, {'_id': mom.toObjectID(ID)}, None,
                     mom.blueprint.defaultDatabase,
                     mom.blueprint.defaultCollection,
                     returnType = 'native', verbose = False)
@@ -260,11 +261,11 @@ class waferCollation(c.collation):
         bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
 
         amount = len(bps) if bps is not None else 0  
-        log.info(f'Collected ({amount}) chip blueprints.')
+        log.info(f'Collected {amount} chip blueprints.')
 
-        if checkNumber_chipBlueprints is not None:
-            if checkNumber_chipBlueprints != amount:
-                log.warning(f'I collected {amount} chip blueprints but I expected {checkNumber_chipBlueprints}.')
+        if self.checkNumber_chipBlueprints is not None:
+            if self.checkNumber_chipBlueprints != amount:
+                log.warning(f'I collected {amount} chip blueprints but I expected {self.checkNumber_chipBlueprints}.')
 
         return bps, bpsDict
 
@@ -274,11 +275,11 @@ class waferCollation(c.collation):
         bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'testChipBlueprints')
         
         amount = len(bps) if bps is not None else 0  
-        log.info(f'Collected (amount) test chip blueprints.')
+        log.info(f'Collected {amount} test chip blueprints.')
 
-        if checkNumber_testChipBlueprints is not None:
-            if checkNumber_testChipBlueprints != len(bps):
-                log.warning(f'I collected {amount} test chip blueprints but I expected {checkNumber_testChipBlueprints}.')
+        if self.checkNumber_testChipBlueprints is not None:
+            if self.checkNumber_testChipBlueprints != amount:
+                log.warning(f'I collected {amount} test chip blueprints but I expected {self.checkNumber_testChipBlueprints}.')
 
         return bps, bpsDict
 
@@ -288,11 +289,11 @@ class waferCollation(c.collation):
         bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
         
         amount = len(bps) if bps is not None else 0  
-        log.info(f'Collected ({amount}) bar blueprints.')
+        log.info(f'Collected {amount} bar blueprints.')
 
-        if checkNumber_barBlueprints is not None:
-            if checkNumber_barBlueprints != len(bps):
-                log.warning(f'I collected {amount} bar blueprints but I expected {checkNumber_barBlueprints}.')
+        if self.checkNumber_barBlueprints is not None:
+            if self.checkNumber_barBlueprints != amount:
+                log.warning(f'I collected {amount} bar blueprints but I expected {self.checkNumber_barBlueprints}.')
 
         return bps, bpsDict
 
@@ -302,11 +303,11 @@ class waferCollation(c.collation):
         bps, bpsDict = self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints')
         
         amount = len(bps) if bps is not None else 0        
-        log.info(f'Collected ({amount}) test cell blueprints.')
+        log.info(f'Collected {amount} test cell blueprints.')
 
-        if checkNumber_testCellBlueprints is not None:
-            if checkNumber_testCellBlueprints != len(bps):
-                log.warning(f'I collected {len(bps)} test cell blueprints but I expected {checkNumber_testCellBlueprints}.')
+        if self.checkNumber_testCellBlueprints is not None:
+            if self.checkNumber_testCellBlueprints != amount:
+                log.warning(f'I collected {amount} test cell blueprints but I expected {self.checkNumber_testCellBlueprints}.')
 
         return bps, bpsDict
 
@@ -321,38 +322,42 @@ class waferCollation(c.collation):
         testBpIDs = [bp.ID for bp in testBPs] if testBPs is not None else []
         barBpIDs = [bp.ID for bp in barBPs] if barBPs is not None else []
 
+        mom.log.debug(f'[collectChipsalike] chipBpIDs: {chipBpIDs}')
+        mom.log.debug(f'[collectChipsalike] testBpIDs: {testBpIDs}')
+        mom.log.debug(f'[collectChipsalike] barBpIDs: {barBpIDs}')
+
         allChipsalike = wafer.retrieveChildrenComponents(self.connection)
-        
-        chips = [chip for chip in allChipsalike if chip.ID in bpIDs]
+    
+        chips = [chip for chip in allChipsalike if chip.blueprintID in chipBpIDs]
         log.info(f'Collected {len(chips)} chips.')
 
-        testChips = [chip for chip in allChipsalike if chip.ID in testBpIDs]
+        testChips = [chip for chip in allChipsalike if chip.blueprintID in testBpIDs]
         log.info(f'Collected {len(testChips)} test chips.')
 
-        bars = [chip for chip in allChipsalike if chip.ID in barBpIDs]
+        bars = [chip for chip in allChipsalike if chip.blueprintID in barBpIDs]
         log.info(f'Collected {len(bars)} bars.')
 
-        if chipLabelCriterion is None:
+        if self.chipLabelCriterion is None:
             log.warning('No label criterion for chips. chipsDict not generated.')
             chipsDict = None
         else:
-            chipsDict = {chipLabelCriterion(chip): chip for chip in chips}
+            chipsDict = {self.chipLabelCriterion(chip): chip for chip in chips}
             if len(chipsDict) != len(chipBPsDict):
                 log.warning(f'I collected {len(chipsDict)} chips but I expected {len(chipBPsDict)}.')
 
-        if testChipLabelCriterion is None:
+        if self.testChipLabelCriterion is None:
             log.warning('No label criterion for test chips. testChipsDict not generated.')
             testChipsDict = None
         else:
-            testChipsDict = {testChipLabelCriterion(chip): chip for chip in testChips}
+            testChipsDict = {self.testChipLabelCriterion(chip): chip for chip in testChips}
             if len(testChipsDict) != len(testBPsDict):
                 log.warning(f'I collected {len(testChipsDict)} test chips but I expected {len(testBPsDict)}.')
 
-        if barLabelCriterion is None:
+        if self.barLabelCriterion is None:
             log.warning('No label criterion for bars. barsDict not generated.')
             barsDict = None
         else:
-            barsDict = {barLabelCriterion(bar): bar for bar in bars}
+            barsDict = {self.barLabelCriterion(bar): bar for bar in bars}
             if len(barsDict) != len(barBPsDict):
                 log.warning(f'I collected {len(barsDict)} bars but I expected {len(barBPsDict)}.')
 
@@ -371,16 +376,21 @@ class waferCollation(c.collation):
     def collectTestCells(self, wafer, cellBPsDict):
 
         cells = wafer.retrieveTestCells(self.connection)
+
+        if cells is None: cells = []
         log.info(f'Collected {len(cells)} test cells.')
 
-        if cellLabelCriterion is None:
+        if self.testChipLabelCriterion is None:
             log.warning('No label criterion for cells. cellsDict not generated.')
             cellsDict = None
         else:
-            cellsDict = {cellLabelCriterion(cell): cell for cell in cells}
+            cellsDict = {self.testChipLabelCriterion(cell): cell for cell in cells}
             if len(cellsDict) != len(cellBPsDict):
                 log.warning(f'I collected {len(cells)} test cells but I expected {len(cellBPsDict)}.')
         
+        if cells == []: cells = None
+        if cellsDict == {}: cellsDict = None
+
         return cells, cellsDict
 
 
@@ -811,11 +821,11 @@ class waferCollation_Bilbao(waferCollation):
     checkNumber_testCellBlueprints = 0
 
     chipLabelCriterion = lambda chip: chip.name.rsplit('_',maxsplit = 1)[1]
-    testLabelCriterion = lambda chip: chip.name.rsplit('-',maxsplit = 1)[1]
+    testChipLabelCriterion = None
     barLabelCriterion = lambda bar: bar.name[-1]
+    testCellLabelCriterion = None
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-        database = None, collection = None):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
     
         super().__init__(connection, waferName_orCmp_orID)
 
