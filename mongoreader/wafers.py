@@ -299,7 +299,7 @@ class waferCollation(c.collation):
 
         # Collecting chips
         chips = [chip for chip in allChips if chip.blueprintID in bpIDs]
-        log.info(f'Collected {len(chips)} {what}.')
+        log.info(f'Collected {len(chips)} {what}s.')
         if len(chips) != expectedAmount:
             log.warning(f'Collected {len(chips)} {what}s but {expectedAmount} were expected.')
 
@@ -310,7 +310,7 @@ class waferCollation(c.collation):
             if label is not None:
                 chipsDict[label] = chip
             else:
-                log.warning(f'Could not retrieve wafer label for {what} "{chip}". Not included in {what}sDict.')
+                log.warning(f'Could not retrieve wafer label for {what} "{chip.name}". Not included in {what}sDict.')
 
 
         # Checking label exists in the wafer
@@ -773,23 +773,8 @@ class waferCollation(c.collation):
 
 class waferCollation_Bilbao(waferCollation):
 
-    checkNumber_chips = 39
-    checkNumber_testChips = 0
-    checkNumber_bars = 3
-    checkNumber_testCells = 0
-
-    checkNumber_chipBlueprints = 3
-    checkNumber_testChipBlueprints = 0
-    checkNumber_barBlueprints = 3
-    checkNumber_testCellBlueprints = 0
-
-    chipLabelCriterion = lambda self, chip: chip.name.rsplit('_',maxsplit = 1)[1]
-    testChipLabelCriterion = None
-    barLabelCriterion = lambda self, bar: bar.name[-1]
-    testCellLabelCriterion = None
-
     def __init__(self, connection:mom.connection, waferName_orCmp_orID):
-    
+
         super().__init__(connection, waferName_orCmp_orID)
 
         if not ('BI' in self.wafer.name or 'CDM' in self.wafer.name):
@@ -799,17 +784,9 @@ class waferCollation_Bilbao(waferCollation):
 
 class waferCollation_Budapest(waferCollation):
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
-        
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=69,
-            chipBlueprintCheckNumber = 4,
-            barsCheckNumber=6,
-            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
-            waferMaskLabel = 'Budapest'
-        )
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
+
+        super().__init__(connection, waferName_orCmp_orID)
 
         if 'DR' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Budapest" wafer.')
@@ -817,32 +794,18 @@ class waferCollation_Budapest(waferCollation):
 
 class waferCollation_Cambridge(waferCollation):
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
-        
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=63,
-            barsCheckNumber=7,
-            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
-            waferMaskLabel = 'Cambridge'
-        )
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
+
+        super().__init__(connection, waferName_orCmp_orID)
 
         if 'CM' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Cambridge" wafer.')
 
 
 class waferCollation_Como(waferCollation):
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
 
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=58,
-            barsCheckNumber=7,
-            chipsKeyCriterion= lambda s: s.rsplit('_',maxsplit = 1)[1],
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1],
-            waferMaskLabel = 'Como'
-        )
+        super().__init__(connection, waferName_orCmp_orID)
 
         if 'CO' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Como" wafer.')
@@ -852,33 +815,9 @@ class waferCollation_Como(waferCollation):
 
 class waferCollation_Cordoba(waferCollation):
     
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
-        
-        def chipCriterion(chipName):
-            if 'T1' in chipName or 'T2' in chipName:
-                return None
-            else:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-
-        def testChipCriterion(chipName):
-            if 'T1' in chipName or 'T2' in chipName:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-            else:
-                return None
-
-
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=90, # 60 normal chips + 30 test chips
-            chipBlueprintCheckNumber=3,
-            testChipBlueprintCheckNumber=2,
-            barsCheckNumber=6,
-            chipsKeyCriterion= chipCriterion,
-            testChipsKeyCriterion= testChipCriterion,
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
-            waferMaskLabel = 'Cordoba'
-        )
+        super().__init__(connection, waferName_orCmp_orID)
 
         if 'CA' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Cordoba" wafer.')
@@ -887,34 +826,10 @@ class waferCollation_Cordoba(waferCollation):
 
 
 class waferCollation_Coimbra(waferCollation):
-    
 
-    def __init__(self, connection:mom.connection, waferName_orCmp_orID,
-            database:str = 'beLaboratory', collection:str = 'components'):
+    def __init__(self, connection:mom.connection, waferName_orCmp_orID):
         
-        def chipCriterion(chipName):
-            if 'AM70' in chipName or 'QR' in chipName:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-            else:
-                return None
-
-        def testChipCriterion(chipName):
-            if 'T1' in chipName or 'T2' in chipName:
-                return chipName.rsplit('_', maxsplit = 1)[1]
-            else:
-                return None
-
-
-        super().__init__(connection, waferName_orCmp_orID, database, collection,
-            chipsCheckNumber=108, # 76 normal chips + 32 test chips
-            chipBlueprintCheckNumber=2,
-            testChipBlueprintCheckNumber=2,
-            barsCheckNumber=5,
-            chipsKeyCriterion= chipCriterion,
-            testChipsKeyCriterion= testChipCriterion,
-            barsKeyCriterion = lambda s: s.rsplit('-',maxsplit = 1)[1], # Check!
-            waferMaskLabel = 'Coimbra'
-        )
+        super().__init__(connection, waferName_orCmp_orID)
 
         if 'CB' not in self.wafer.name:
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Coimbra" wafer.')
