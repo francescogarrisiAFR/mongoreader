@@ -24,6 +24,33 @@ from numpy import random, linspace
 
 
 
+def _joinListsOrNone(*args):
+    returnList = []
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, list):
+            raise TypeError('All arguments must be lists or None.')
+        else:
+            returnList += arg
+
+    return returnList
+
+def _joinDictsOrNone(*args):
+    returnDict = {}
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, dict):
+            raise TypeError('All arguments must be dictionaries or None.')
+        else:
+            returnDict |= arg
+
+    return returnDict
+
+
 class _waferPlotter:
     """This class should not be instantiated directly, but only through its sub-classes"""
 
@@ -36,9 +63,56 @@ class _waferPlotter:
         
         with opened(connection):
             self.waferBP = waferBP
+
+            # lists, None if not found
+            self.allowedChipGroups = waferBP.retrieveChipBlueprintGroupNames()
+            self.allowedTestChipGroups = waferBP.retrieveTestChipBlueprintGroupNames()
+            self.allowedTestCellpGroups = waferBP.retrieveTestCellBlueprintGroupNames()
+
+            self.allChipGroups = _joinListsOrNone(
+                self.allowedChipGroups,
+                self.allowedTestChipGroups,
+            )
+            self.allGroups = _joinListsOrNone(
+                self.allowedChipGroups,
+                self.allowedTestChipGroups,
+                self.allowedTestCellpGroups
+            )
+
+            # lists, None if not found
+            self.chipLabels = waferBP.retrieveChipBlueprintLabels()
+            self.testChipLabels = waferBP.retrieveTestChipBlueprintLabels()
+            self.testCellLabels = waferBP.retrieveTestCellBlueprintLabels()
+
+            self.allChipLabels = _joinListsOrNone(
+                self.chipLabels,
+                self.testChipLabels,
+            )
+            self.allLabels = _joinListsOrNone(
+                self.chipLabels,
+                self.testChipLabels,
+                self.testCellLabels
+            )
+
+            # A dictionaries containing all the group -> labels relations
+            
+            self.groupToLabelsDict = _joinDictsOrNone(
+                waferBP.retrieveChipBlueprintGroupsDict(),
+                waferBP.retrieveTestChipBlueprintGroupsDict(),
+                waferBP.retrieveTestCellBlueprintGroupsDict()
+            )
+
+            # dicts, None if not found
             self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
-            self.allowedGroups = waferBP.retrieveChipBlueprintGroupNames()
-            self.allChipLabels = waferBP.retrieveChipBlueprintLabels()
+            self.testChipP1P2s = waferBP.retrieveTestChipP1P2s(connection)
+            self.testCellP1P2s = waferBP.retrieveTestCellP1P2s(connection)
+
+            self.allP1P2s = _joinDictsOrNone(
+                self.chipP1P2s,
+                self.testChipP1P2s,
+                self.testCellP1P2s
+            )
+            
 
         # Should be retrieved from waferBP's "geometry" field.
         self.D = 101.6 # Wafer plot diameter in mm
@@ -63,22 +137,22 @@ class _waferPlotter:
         """
 
         if groups is None:
-            log.debug(f'[_chipGroupLabels] Returning all labels: {self.allChipLabels}')
-            return self.allChipLabels
+            log.debug(f'[_chipGroupLabels] Returning all labels: {self.allLabels}')
+            return self.allLabels
 
-        allowedGroupString = ', '.join([f'"{g}"' for g in self.allowedGroups])
+        allowedGroupString = ', '.join([f'"{g}"' for g in self.allGroups])
 
         if not isinstance(groups, list):
                 raise TypeError(f'"groups" must be a list of strings among {allowedGroupString}.')
 
         for el in groups:
-            if not el in self.allowedGroups:
+            if not el in self.allGroups:
                 raise ValueError(f'"groups" must be a list of strings among {allowedGroupString}.')
 
         labels = []
         for group in groups:
             log.debug(f'[_chipGroupLabels] group: "{group}"')
-            newLabels = self.waferBP.retrieveWaferGroup(group)
+            newLabels = self.groupToLabelsDict[group]
             log.debug(f'[_chipGroupLabels] newLabels: "{newLabels}"')
             labels += newLabels
         return labels
@@ -101,10 +175,10 @@ class _waferPlotter:
 
         log.debug(f'[_chipP1P2] chipLabel: "{chipLabel}".')
 
-        if not chipLabel in self.allChipLabels:
+        if not chipLabel in self.allLabels:
             raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
         
-        p12 = self.chipP1P2s[chipLabel] # um
+        p12 = self.allP1P2s[chipLabel] # um
 
         p1 = list(map(lambda x: float(x)/1000, p12["p1"])) # um to mm
         p2 = list(map(lambda x: float(x)/1000, p12["p2"])) # um to mm
@@ -606,6 +680,8 @@ class _waferPlotter:
 
         if not isinstance(dataDict, dict):
             raise TypeError('"dataDict" must be a dictionary.')
+
+        log.debug(f'[plotData_chipScale] labels: {list(dataDict.keys())}')
 
         if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
         if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)

@@ -14,6 +14,34 @@ from mongomanager.errors import DocumentNotFound
 
 chipGoggles = gf.chipGoggleFunctions()
 
+
+def _joinListsOrNone(*args):
+    returnList = []
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, list):
+            raise TypeError('All arguments must be lists or None.')
+        else:
+            returnList += arg
+
+    return returnList
+
+def _joinDictsOrNone(*args):
+    returnDict = {}
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, dict):
+            raise TypeError('All arguments must be dictionaries or None.')
+        else:
+            returnDict |= arg
+
+    return returnDict
+
+
 class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer
     and its related components (typically chips, bars and test structures).
@@ -149,11 +177,18 @@ class waferCollation(c.collation):
                             self.testChipBlueprints, self.testChipBPdict,
                             self.barBlueprints, self.barBPdict,
                             )
+
+            self.allChips = _joinListsOrNone(self.chips, self.testChips)
+            self.allChipsDict = _joinDictsOrNone(self.chipsDict, self.testChipsDict)
             
             # Collecting testCells
             self.testCells, self.testCellsDict = \
                 self.collectTestCells(self.wafer, self. testCellBlueprints, self.testCellBPdict)
         
+            # wafer plotter
+
+            self.wplt = wplt.waferPlotter(self.connection, self.waferBlueprint)
+
 
     # --- collect methods ---
 
@@ -481,77 +516,85 @@ class waferCollation(c.collation):
             return returnDict
 
 
-    def plotAllChipStatus(self, colorDict = None):
+    def _plotStringField(self, chips, field_or_chain:str,
+            groups:list = None,
+            what:str = None,
+            colorDict = None,
+            title = None):
 
-        if self.allChips is None:
-            log.warning(f'The collation of wafer "{self.wafer.name}" has no allChips attribute. Nothing printed.')
-            return
+        if chips is None:
+            if what is not None:
+                log.warning(f'{what}s is None. Cannot plot.')
+                return
 
-        dataDict = {}
-        for chip in self.allChips:
-            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
-            
-        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
+        dataDict = {chip['_waferLabel']: chip.getField(field_or_chain, verbose = False)
+            for chip in chips}
 
-        plt.plotData_chipScale(dataDict, dataType = 'string',
-            title = 'Chip status',
-            colormapName='rainbow',
-            waferName = self.wafer.name,
-            printChipLabels = True,
-            colorDict=colorDict
-            )
-
-    def plotChipStatus(self, colorDict = None):
-
-        if self.chips is None:
-            log.warning(f'The collation of wafer "{self.wafer.name}" has no chips attribute. Nothing printed.')
-            return
-
-        dataDict = {}
-        for chip in self.chips:
-            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
-            
-        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
-
-        if 'waferChips' in self.waferBlueprint.retrieveChipBlueprintGroupNames():
-            chipGroups = ['waferChips']
-        else:
-            chipGroups = None
-
-        plt.plotData_chipScale(dataDict, dataType = 'string',
-            title = 'Chip status',
+        self.wplt.plotData_chipScale(dataDict, dataType = 'string',
+            title = title,
             colormapName='rainbow',
             waferName = self.wafer.name,
             printChipLabels = True,
             colorDict=colorDict,
-            chipGroups = chipGroups
+            chipGroups=groups,
             )
-        
-    def plotTestChipStatus(self, colorDict = None):
 
-        if self.testChips is None:
-            log.warning(f'The collation of wafer "{self.wafer.name}" has no test chip attribute. Nothing printed.')
-            return
 
-        dataDict = {}
-        for chip in self.testChips:
-            dataDict[chip.name.split('_')[1]] = chip.getField('status', verbose = False)
-            
-        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
+    def plotStringField_allChips(self, field_or_chain:str, colorDict = None, title = None):
+        if title is None: title = f'Field "{field_or_chain}"'
+        self._plotStringField(self.allChips, field_or_chain,
+            groups = self.wplt.allChipGroups,
+            what = 'allChip', colorDict = colorDict,
+            title = title)
 
-        if 'testChips' in self.waferBlueprint.getWaferChipGroupNames():
-            chipGroups = ['testChips']
-        else:
-            chipGroups = None
+    def plotStringField_chips(self, field_or_chain:str, colorDict = None, title = None):
+        if title is None: title = f'Field "{field_or_chain}"'
+        self._plotStringField(self.chips, field_or_chain,
+            groups = self.wplt.allowedChipGroups,
+            what = 'chip', colorDict = colorDict,
+            title = title)
 
-        plt.plotData_chipScale(dataDict, dataType = 'string',
-            title = 'Chip status',
-            colormapName='rainbow',
-            waferName = self.wafer.name,
-            printChipLabels = True,
-            colorDict=colorDict,
-            chipGroups = chipGroups
-            )
+    def plotStringField_testChips(self, field_or_chain:str, colorDict = None, title = None):
+        if title is None: title = f'Field "{field_or_chain}"'
+        self._plotStringField(self.testChips, field_or_chain,
+            groups = self.wplt.allowedTestChipGroups,
+            what = 'testChips', colorDict = colorDict,
+            title = title)
+
+    def plotStringField_testCells(self, field_or_chain:str, colorDict = None, title = None):
+        if title is None: title = f'Field "{field_or_chain}"'
+        self._plotStringField(self.testCells, field_or_chain,
+            groups = self.wplt.allowedTestCellpGroups,
+            what = 'testCells', colorDict = colorDict,
+            title = title)
+
+
+    def plotStatus_allChips(self, colorDict = None):
+        self.plotStringField_allChips('status', colorDict = colorDict, title = 'Chip status')
+
+    def plotStatus_chips(self, colorDict = None):
+        self.plotStringField_chips('status', colorDict = colorDict, title = 'Chip status')
+
+    def plotStatus_testChips(self, colorDict = None):
+        self.plotStringField_testChips('status', colorDict = colorDict, title = 'Chip status')
+
+    def plotStatus_testCells(self, colorDict = None):
+        self.plotStringField_testCells('status', colorDict = colorDict, title = 'Chip status')
+
+
+    def plotProcessStage_allChips(self, colorDict = None):
+        self.plotStringField_allChips('processStage', colorDict = colorDict, title = 'Process Stage')
+
+    def plotProcessStage_chips(self, colorDict = None):
+        self.plotStringField_chips('processStage', colorDict = colorDict, title = 'Process Stage')
+
+    def plotProcessStage_testChips(self, colorDict = None):
+        self.plotStringField_testChips('processStage', colorDict = colorDict, title = 'Process Stage')
+
+    def plotProcessStage_testCells(self, colorDict = None):
+        self.plotStringField_testCells('processStage', colorDict = colorDict, title = 'Process Stage')
+
+
 
     def plotDatasheetData(self,
         resultName:str,
