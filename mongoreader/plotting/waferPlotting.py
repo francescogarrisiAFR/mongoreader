@@ -65,9 +65,9 @@ class _waferPlotter:
             self.waferBP = waferBP
 
             # lists, None if not found
-            self.allowedChipGroups = waferBP.retrieveChipBlueprintGroupNames()
-            self.allowedTestChipGroups = waferBP.retrieveTestChipBlueprintGroupNames()
-            self.allowedTestCellpGroups = waferBP.retrieveTestCellBlueprintGroupNames()
+            self.allowedChipGroups = waferBP.ChipBlueprints.retrieveGroupNames()
+            self.allowedTestChipGroups = waferBP.TestChipBlueprints.retrieveGroupNames()
+            self.allowedTestCellpGroups = waferBP.TestCellBlueprints.retrieveGroupNames()
 
             self.allChipGroups = _joinListsOrNone(
                 self.allowedChipGroups,
@@ -80,9 +80,9 @@ class _waferPlotter:
             )
 
             # lists, None if not found
-            self.chipLabels = waferBP.retrieveChipBlueprintLabels()
-            self.testChipLabels = waferBP.retrieveTestChipBlueprintLabels()
-            self.testCellLabels = waferBP.retrieveTestCellBlueprintLabels()
+            self.chipLabels = waferBP.ChipBlueprints.retrieveLabels()
+            self.testChipLabels = waferBP.TestChipBlueprints.retrieveLabels()
+            self.testCellLabels = waferBP.TestCellBlueprints.retrieveLabels()
 
             self.allChipLabels = _joinListsOrNone(
                 self.chipLabels,
@@ -97,9 +97,9 @@ class _waferPlotter:
             # A dictionaries containing all the group -> labels relations
             
             self.groupToLabelsDict = _joinDictsOrNone(
-                waferBP.retrieveChipBlueprintGroupsDict(),
-                waferBP.retrieveTestChipBlueprintGroupsDict(),
-                waferBP.retrieveTestCellBlueprintGroupsDict()
+                waferBP.ChipBlueprints.retrieveGroupDict(),
+                waferBP.TestChipBlueprints.retrieveGroupDict(),
+                waferBP.TestCellBlueprints.retrieveGroupDict()
             )
 
             # dicts, None if not found

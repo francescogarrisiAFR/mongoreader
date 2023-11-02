@@ -263,7 +263,7 @@ class moduleCollation(c.collation):
         Returns:
             mongomanager.component: The collected COS component."""
         
-        cmps = module.retrieveInnerComponents(connection)
+        cmps = module.InnerComponents.retrieveElements(connection)
         
         if cmps is None:
             mom.log.warning(f'Could not retrieve inner components from module "{module.name}".')
@@ -308,7 +308,7 @@ class moduleCollation(c.collation):
             mom.log.warning('I cannot collect the chip because COS was not collected.')
             return None
 
-        cmps = COS.retrieveInnerComponents(connection)
+        cmps = COS.InnerComponents.retrieveElements(connection)
         
         if cmps is None:
             mom.log.warning(f'Could not retrieve inner components from COS "{COS.name}".')

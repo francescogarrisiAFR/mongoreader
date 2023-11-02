@@ -16,6 +16,7 @@ chipGoggles = gf.chipGoggleFunctions()
 
 
 def _joinListsOrNone(*args):
+    """Returns a single dictionary from a arguments that can be lists or None."""
     returnList = []
 
     for arg in args:
@@ -29,6 +30,7 @@ def _joinListsOrNone(*args):
     return returnList
 
 def _joinDictsOrNone(*args):
+    """Returns a single dictionary from a arguments that can be dictionaries or None."""
     returnDict = {}
 
     for arg in args:
@@ -48,35 +50,12 @@ class waferCollation(c.collation):
     
     The collation has useful methods to extract and plot data from this
     set of components.
-    
-    A generic waferCollation is not usually instanciated directly; instead,
-    for specific wafer types (a type is identified in terms of the maskset of
-    the wafer) you should use the related sub-class. For instance:
-    - Bilbao: waferCollation_Bilbao
-    - Budapest: waferCollation_Budapest
-    - Cambridge: waferCollation_Cambridge
-    - Como: waferCollation_Como
 
     Apart from the methods described below, a waferCollation has some useful
     features that can be used for retrieving and plotting information on its
     wafer/chips/bars, and to retrieve these components easily.
 
     """
-
-    checkNumber_chips = None
-    checkNumber_testChips = None
-    checkNumber_bars = None
-    checkNumber_testCells = None
-
-    checkNumber_chipBlueprints = None
-    checkNumber_testChipBlueprints = None
-    checkNumber_barBlueprints = None
-    checkNumber_testCellBlueprints = None
-
-    chipLabelCriterion = None
-    testChipLabelCriterion = None
-    barLabelCriterion = None
-    testCellLabelCriterion = None
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID):
         """Initialization method of the waferCollation class.
@@ -144,35 +123,34 @@ class waferCollation(c.collation):
             if isinstance(waferName_orCmp_orID, mom.wafer):
                 self.wafer = waferName_orCmp_orID
             else:
-                self.wafer = self.collectWafer(waferName_orCmp_orID)
+                self.wafer = self._collectWafer(waferName_orCmp_orID)
 
             # Collecting wafer blueprint
-
-            self.waferBlueprint = self.collectWaferBlueprint(self.wafer)
+            self.waferBlueprint = self._collectWaferBlueprint(self.wafer)
             
         
             # Collecting chip blueprints
             self.chipBlueprints, self.chipBPdict = \
-                 self.collectChipBlueprints(self.waferBlueprint)
+                 self._collectChipBlueprints(self.waferBlueprint)
 
             # Collecting test chip blueprints
             self.testChipBlueprints, self.testChipBPdict = \
-                 self.collectTestChipBlueprints(self.waferBlueprint)
+                 self._collectTestChipBlueprints(self.waferBlueprint)
 
             # Collecting bar blueprints
             self.barBlueprints, self.barBPdict = \
-                 self.collectBarBlueprints(self.waferBlueprint)
+                 self._collectBarBlueprints(self.waferBlueprint)
 
             # Collecting test cell blueprints
             self.testCellBlueprints, self.testCellBPdict = \
-                 self.collectTestCellBlueprints(self.waferBlueprint)
+                 self._collectTestCellBlueprints(self.waferBlueprint)
 
             
             # Collecting chips, testChips and bars
             self.chips, self.chipsDict, \
             self.testChips, self.testChipsDict, \
             self.bars, self.barsDict = \
-                self.collectChipsalike(self.wafer,
+                self._collectChipsalike(self.wafer,
                             self.chipBlueprints, self.chipBPdict,
                             self.testChipBlueprints, self.testChipBPdict,
                             self.barBlueprints, self.barBPdict,
@@ -192,7 +170,7 @@ class waferCollation(c.collation):
 
     # --- collect methods ---
 
-    def collectWafer(self, waferName_orID):
+    def _collectWafer(self, waferName_orID):
         """Queries the database for the specified wafer and returns it.
 
         Args:
@@ -218,7 +196,7 @@ class waferCollation(c.collation):
         elif isID(waferName_orID):
            
             with mom.logMode(mom.log, 'WARNING'):
-                wafer = mom.importWafer(waferName_orID, self.connection)
+                wafer = mom.wafer.importDocument(self.connection, waferName_orID, verbose = False)
 
             if wafer is None:
                 raise DocumentNotFound(f'Could not import a wafer from ID "{waferName_orID}".')
@@ -230,7 +208,7 @@ class waferCollation(c.collation):
         return wafer
     
 
-    def collectWaferBlueprint(self, wafer):
+    def _collectWaferBlueprint(self, wafer):
         """Returns the wafer blueprint of the wafer.
         
         Raises:
@@ -240,8 +218,7 @@ class waferCollation(c.collation):
             waferBlueprint: The retrieved wafer blueprint document.
         """
 
-        with mom.logMode(mom.log, 'WARNING'):
-            wbp = wafer.retrieveBlueprint(self.connection)
+        wbp = wafer.retrieveBlueprint(self.connection, verbose = False)
     
         if wbp is None:
             raise DocumentNotFound('Could not retrieve the wafer blueprint.')
@@ -301,25 +278,25 @@ class waferCollation(c.collation):
 
 
 
-    def collectChipBlueprints(self, waferBlueprint):
+    def _collectChipBlueprints(self, waferBlueprint):
         """Returns the chip blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'chipBlueprints', 'chip blueprint')
 
-    def collectTestChipBlueprints(self, waferBlueprint):
+    def _collectTestChipBlueprints(self, waferBlueprint):
         """Returns the test chip blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'testChipBlueprints', 'test chip blueprint')
 
-    def collectBarBlueprints(self, waferBlueprint):
+    def _collectBarBlueprints(self, waferBlueprint):
         """Returns the test bar blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'barBlueprints', 'bar blueprint')
 
-    def collectTestCellBlueprints(self, waferBlueprint):
+    def _collectTestCellBlueprints(self, waferBlueprint):
         """Returns the test cell blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints', 'test cell blueprint')
         
 
 
-    def _collectChipsalike(self, what, allChips, bps, bpDict):
+    def _collectChipsalike_commonFunction(self, what, allChips, bps, bpDict):
 
         expectedAmount = len(bpDict) if bpDict is not None else 0
 
@@ -329,8 +306,8 @@ class waferCollation(c.collation):
 
         bpIDs = [bp.ID for bp in bps]
 
-        log.debug(f'[_collectChipsalike] ({what}): bpIDs: {bpIDs}')
-        log.debug(f'[_collectChipsalike] ({what}): bpDict: {bpDict}')
+        log.debug(f'[_collectChipsalike_commonFunction] ({what}): bpIDs: {bpIDs}')
+        log.debug(f'[_collectChipsalike_commonFunction] ({what}): bpDict: {bpDict}')
 
         # Collecting chips
         chips = [chip for chip in allChips if chip.blueprintID in bpIDs]
@@ -359,35 +336,40 @@ class waferCollation(c.collation):
         return chips, chipsDict
 
 
-    def collectChipsalike(self, wafer,
+    def _collectChipsalike(self, wafer,
                      chipBPs, chipBPsDict,
                      testBPs, testChipBPsDict,
                      barBPs, barBPsDict,
                      ):
 
-        allChipsalike = wafer.retrieveChildrenComponents(self.connection)
+        allChipsalike = wafer.ChildrenComponents.retrieveElements(self.connection)
         
+        if allChipsalike is None:
+            log.warning('I retrieved no children components from the wafer.')
+            return None, None, None, None, None, None
+
+
         # Chips
         chips, chipsDict = \
-            self._collectChipsalike('chip', allChipsalike, chipBPs, chipBPsDict)
+            self._collectChipsalike_commonFunction('chip', allChipsalike, chipBPs, chipBPsDict)
         
         # Test chips
         testChips, testChipsDict = \
-            self._collectChipsalike('test chip', allChipsalike, testBPs, testChipBPsDict)
+            self._collectChipsalike_commonFunction('test chip', allChipsalike, testBPs, testChipBPsDict)
         
         # Bars
         bars, barsDict = \
-            self._collectChipsalike('bar', allChipsalike, barBPs, barBPsDict)
+            self._collectChipsalike_commonFunction('bar', allChipsalike, barBPs, barBPsDict)
 
         return chips, chipsDict, testChips, testChipsDict, bars, barsDict
 
     def collectTestCells(self, wafer, cellBPs, cellBPsDict):
 
-        testCells = wafer.retrieveTestCells(self.connection)
+        testCells = wafer.TestCells.retrieveElements(self.connection)
         
         # testCells
         testCells, testCellsDict = \
-            self._collectChipsalike('test cell', testCells, cellBPs, cellBPsDict)
+            self._collectChipsalike_commonFunction('test cell', testCells, cellBPs, cellBPsDict)
         
         return testCells, testCellsDict
 
@@ -748,7 +730,7 @@ class waferCollation(c.collation):
     # Print methods
 
     @staticmethod
-    def printWaferInfo(wafer, printIDs:bool = False):
+    def _printWaferInfo(wafer, printIDs:bool = False):
 
         nameStr = f'{"[wafer]":>7} {_nameString(wafer, printIDs)}'
         statusStr = _statusString(wafer)
@@ -757,7 +739,7 @@ class waferCollation(c.collation):
         print(string)
 
     @staticmethod
-    def printBarInfo(bar, printIDs:bool = False):
+    def _printBarInfo(bar, printIDs:bool = False):
 
         nameStr = f'{"[bar]":>7} {_nameString(bar, printIDs)}'
         statusStr = _statusString(bar)
@@ -766,9 +748,9 @@ class waferCollation(c.collation):
         print(string)
 
     @staticmethod
-    def printChipInfo(chip, printIDs:bool = False):
+    def _printChipInfo(chip, label, printIDs:bool = False):
 
-        nameStr = f'{"[chip]":>7} {_nameString(chip, printIDs)}'
+        nameStr = f'{"[{label}]":>7} {_nameString(chip, printIDs)}'
         statusStr = _statusString(chip)
         string = f'{nameStr} :: {statusStr}'
 
@@ -780,6 +762,8 @@ class waferCollation(c.collation):
         printWafer = True,
         printBars = True,
         printChips = True,
+        printTestChips = True,
+        printTestCells = True,
         excludeNoneStatus = False):
         """Prints a schematic view of the status of wafers, bars, chips.
         
@@ -792,24 +776,40 @@ class waferCollation(c.collation):
         """
 
         if printWafer:
-            self.printWaferInfo(self.wafer, printIDs)
+            self._printWaferInfo(self.wafer, printIDs)
 
         bars = [] if self.bars is None else self.bars
         chips = [] if self.chips is None else self.chips
+        testChips = [] if self.testChips is None else self.testChips
+        testCells = [] if self.testCells is None else self.testCells
 
         if printBars:
             for bar in bars:
                 if bar.status is None:
                     if excludeNoneStatus:
                         continue
-                self.printBarInfo(bar, printIDs)
+                self._printBarInfo(bar, printIDs)
 
         if printChips:
             for chip in chips:
                 if chip.status is None:
                     if excludeNoneStatus:
                         continue
-                self.printChipInfo(chip, printIDs)
+                self._printChipInfo(chip, 'chip', printIDs)
+
+        if printTestChips:
+            for chip in testChips:
+                if chip.status is None:
+                    if excludeNoneStatus:
+                        continue
+                self._printChipInfo(chip, 'test chip', printIDs)
+
+        if printTestCells:
+            for chip in testCells:
+                if chip.status is None:
+                    if excludeNoneStatus:
+                        continue
+                self._printChipInfo(chip, 'test cell', printIDs)
         
 
 
