@@ -1,4 +1,5 @@
 from mongomanager import log
+from mongomanager import component as cmpClass
 from datautils import dataClass
 
 class chipGoggleFunctions:
@@ -15,8 +16,14 @@ class chipGoggleFunctions:
             testEntry:dict,
             searchResultName_orNames,
             locationNames:str = None,
-            searchDatasheetReady:bool = True) -> list:
-        """Returns a list of dictionaries in the form:
+            searchDatasheetReady:bool = True,
+            requiredStatus:str = None,
+            requiredProcessStage:str = None,
+            requiredTags:list = None,
+            tagsToExclude:list = None,
+            ) -> list:
+        """Given an entry of a test history of a component ("testEntry"),
+        returns a list of dictionaries in the form:
         
         [
             {"result": <resultName>, "data": <data>, "location": <location>},
@@ -24,17 +31,39 @@ class chipGoggleFunctions:
             ...
         ]
 
-        If "locationNames" is None, results will be scooped without checking
-        the location field of the test entry.
+        Additional arguments specify which results are collected, as described
+        below.
 
-        If "searchDatasheetReady" is True, the result is collected only if
-        the value of the field "datasheedReady" is True.
+        Args:
+            testHistory (list): The test history of a component to be scooped.
+            searchResultName_orNames (str | list[str]): The name(s) of the
+                result(s) to be scooped. 
+            locationNames (str, optional): If passed, the location(s) where the
+                results may be found. If None, results will be scooped without
+                checking the location field of the entry.
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
+
+        Returns:
+            List[dict]: The output described above.
         """
 
         if isinstance(searchResultName_orNames, list):
             for name in searchResultName_orNames:
                 if not isinstance(name, str):
-                    raise ValueError('"searchResultName_orNames" must be a string or a list of strings.')
+                    raise TypeError('"searchResultName_orNames" must be a string or a list of strings.')
             resultNames = searchResultName_orNames
         else:
             if not isinstance(searchResultName_orNames, str):
@@ -47,9 +76,44 @@ class chipGoggleFunctions:
 
             for name in locationNames:
                 if not isinstance(name, str):
-                    raise ValueError('"locationNames" must be a list of string.')
+                    raise TypeError('"locationNames" must be a list of string.')
+
+        if requiredStatus is not None:
+            if not isinstance(requiredStatus, str):
+                raise TypeError('"requiredStatus" must be a string or None.')
+            
+        if requiredProcessStage is not None:
+            if not isinstance(requiredProcessStage, str):
+                raise TypeError('"requiredProcessStage" must be a string or None.')
+            
+        if requiredTags is not None:
+            if not isinstance(requiredTags, list):
+                raise TypeError('"requiredTags" must be a list of strings or None.')
+            for el in requiredTags:
+                if not isinstance(el, str):
+                    raise TypeError('"requiredTags" must be a list of strings or None.')
+                
+        if tagsToExclude is not None:
+            if not isinstance(tagsToExclude, list):
+                raise TypeError('"tagsToExclude" must be a list of strings or None.')
+            for el in tagsToExclude:
+                if not isinstance(el, str):
+                    raise TypeError('"tagsToExclude" must be a list of strings or None.')
+                        
 
         found = []
+
+        # Searching general entry fields
+
+        if requiredStatus is not None:
+            if testEntry.get('status') != requiredStatus:
+                return None
+        
+        if requiredProcessStage is not None:
+            if testEntry.get('processStage') != requiredProcessStage:
+                return None
+
+        # Search individual result dictionaries in entry
 
         entryResults = testEntry.get('results', [])
         for res in entryResults:    
@@ -69,6 +133,21 @@ class chipGoggleFunctions:
             if locationNames is not None:
                 if loc is None or loc not in locationNames:
                     continue
+
+            if requiredTags is not None:
+                resTags = res.get('requiredTags')
+                if resTags is None or resTags == []:
+                    continue
+
+                if not all([tag in resTags for tag in requiredTags]):
+                    continue
+
+            if tagsToExclude is not None:
+                resTags = res.get('requiredTags')
+                if not(resTags is None or resTags == []): # There may be tags to exclude
+                    if any([tag in tagsToExclude for tag in resTags]):
+                        continue
+
 
             # If I arrived here, I found the right result
 
@@ -94,21 +173,43 @@ class chipGoggleFunctions:
         else:
             return found
 
+
     @classmethod
     def scoopResultsFromHistory(cls,
             testHistory:list,
             resultName_orNames, 
             locationNames:str,
-            searchDatasheetReady:bool = True) -> dict:
+            searchDatasheetReady:bool = True,
+            requiredStatus:str = None,
+            requiredProcessStage:str = None,
+            requiredTags:list = None,
+            tagsToExclude:list = None) -> dict:
         """This function scoops the test history of a component to return a 
         dataDict dictionary or a dictionary of dataDict dictionaries (depending
         on wether "resultName_orNames" is a single string or a list of strings.
 
-        Each dataDict is in the form:
-        {
-            
-        }
+        Args:
+            testHistory (list): The test history of a component to be scooped.
+            resultName_orNames (str | list[str]): The name(s) of the result(s)
+                to be scooped. 
+            locationNames (str): The location(s) where the results may be found.
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
 
+        Returns:
+            dict: The dataDict dictionary of scooped results.
         """
 
         # allScooped is a list of lists of the form
@@ -141,8 +242,15 @@ class chipGoggleFunctions:
 
         # Scooping results from all the test history entries.
 
-        allScooped = [cls.scoopResultsFromTestEntry(entry,
-            resultName_orNames, locationNames, searchDatasheetReady)
+        allScooped = [cls.scoopResultsFromTestEntry(entry,               
+                            resultName_orNames,
+                            locationNames,
+                            searchDatasheetReady,
+                            requiredStatus,
+                            requiredProcessStage,
+                            requiredTags,
+                            tagsToExclude)
+
             for entry in reversed(testHistory)] # Most recent is scooped first
 
         while None in allScooped: allScooped.remove(None)
@@ -189,31 +297,52 @@ class chipGoggleFunctions:
 
 
     @classmethod
-    def datasheedData(cls, chip,
-            resultName_orNames,
-            locationNames:list):
-        """
-        This function is used to search the test history of "chip" for results
-        of tests. It searches results named after "resultName_orNames".
+    def scoopComponentResults(cls, component, resultName_orNames,
+                                locationNames:str,
+                                searchDatasheetReady:bool = True,
+                                requiredStatus:str = None,
+                                requiredProcessStage:str = None,
+                                requiredTags:list = None,
+                                tagsToExclude:list = None):
+        """This function scoops the test history of a component to return a 
+        dataDict dictionary or a dictionary of dataDict dictionaries (depending
+        on wether "resultName_orNames" is a single string or a list of strings.
 
-        If "resultName_orNames" is a string, the functions returns a dictionary
-        in the form
-        {
-            <location1>: <data1>,
-            <location2>: <data2>,
-            ...
-        }
-        corresponding to the data associated to the result and where the keys
-        <locationN> are the elements of "locationNames".
+        Args:
+            component (mongomanager.component): The component whose history is
+                to be scooped.
+            resultName_orNames (str | list[str]): The name(s) of the result(s)
+                to be scooped. 
+            locationNames (str): The location(s) where the results may be found.
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
 
-        If "resultName_orNames" is a list of strings, the function does the
-        same for each element of the list, and results are stored in a list
-        of dictionaries in the same form as the one described above.
-        """
+        Returns:
+            dict: The dataDict dictionary of scooped results."""
+        
+        if not isinstance(component, cmpClass):
+            raise TypeError('scoopComponentReults can only be applied to mongomanager component documents.')
 
-        history = chip.getField('testHistory', valueIfNotFound = [], verbose = False)
+        history = component.getField('testHistory',
+                                valueIfNotFound = [],
+                                notFoundValues = [[], None],
+                                verbose = False)
+        
         scoopedDict = cls.scoopResultsFromHistory(history,
-            resultName_orNames, locationNames, searchDatasheetReady=True)                       
+            resultName_orNames, locationNames, searchDatasheetReady,
+            requiredStatus, requiredProcessStage, requiredTags, tagsToExclude)
 
         if isinstance(resultName_orNames, str):
             return scoopedDict[resultName_orNames]

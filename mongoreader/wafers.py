@@ -9,102 +9,63 @@ from mongoutils import isID
 from mongoutils.connections import opened
 from mongomanager import log
 
-
 from mongomanager.errors import DocumentNotFound
+
+from numpy import average
 
 chipGoggles = gf.chipGoggleFunctions()
 
 
-def _joinListsOrNone(*args):
-    """Returns a single dictionary from a arguments that can be lists or None."""
-    returnList = []
-
-    for arg in args:
-        if arg is None:
-            continue
-        elif not isinstance(arg, list):
-            raise TypeError('All arguments must be lists or None.')
-        else:
-            returnList += arg
-
-    return returnList
-
-def _joinDictsOrNone(*args):
-    """Returns a single dictionary from a arguments that can be dictionaries or None."""
-    returnDict = {}
-
-    for arg in args:
-        if arg is None:
-            continue
-        elif not isinstance(arg, dict):
-            raise TypeError('All arguments must be dictionaries or None.')
-        else:
-            returnDict |= arg
-
-    return returnDict
-
 
 class waferCollation(c.collation):
-    """A waferCollation is a class used to collect from the database a wafer
-    and its related components (typically chips, bars and test structures).
+    """A waferCollation is a class used to collect from the database a wafer,
+    its related components (chips, test chips, bars) and their blueprints.
     
     The collation has useful methods to extract and plot data from this
     set of components.
 
-    Apart from the methods described below, a waferCollation has some useful
-    features that can be used for retrieving and plotting information on its
-    wafer/chips/bars, and to retrieve these components easily.
+    A waferCollation has also attributes to access the components easily
+    
+    <waferCollation>.chips: A list of all the chips
+    <waferCollation>.testChips: A list of all the test chips
+    <waferCollation>.testCells: A list of all the wafer's test cells.
+    <waferCollation>.bars: A list of all the wafer's bars.
+
+    <waferCollation>.chipsDict: A dictionary to obtain chips from their key.
+    <waferCollation>.testChipsDict: A dictionary to obtain test chips from their key.
+    <waferCollation>.testCellsDict: A dictionary to obtain test cells from their key.
+    <waferCollation>.barsDict: A dictionary to obtain bars from their key.
+
+    Similarly to above, we have the same for blueprints:
+
+    <waferCollation>.chipBlueprints
+    <waferCollation>.testChipBlueprints
+    <waferCollation>.testCellBlueprints
+    <waferCollation>.barBlueprints
+
+    <waferCollation>.chipBPdict
+    <waferCollation>.testChiBPdict
+    <waferCollation>.testCellBPdict
+    <waferCollation>.barBPdict
 
     """
 
     def __init__(self, connection:mom.connection, waferName_orCmp_orID):
         """Initialization method of the waferCollation class.
 
-        The main purpose of this method is to retrieve the wafer, bars, and
-        chip components from the database and assign them to the corresponding
-        attributes of the waferCollation instance.
+        The main purpose of this method is to retrieve the component and
+        blueprint documents for wafers, bars, chips, test chips and test cells.
+        assigning them to corresponding attributes of the waferCollation
+        instance.
 
-        This __init__ method is meant to be called __init__ of subclasses of  
-        waferCollation. Some arguments have to be defined in the subclass
-        __init__ and passed, otherwise exception are raised.
+        It also constructs dictioaries to easily access components through their
+        labels.
 
         Args:
             connection (mongomanager.connection): The connection instance to 
                 the MongoDB server.
             waferName_orCmp_orID (str | mongomanager.component | ObjectId): The 
                 collation wafer.
-            database (str, optional): The MongoDB database where the wafer is
-                found (needed if the wafer is not passed as a full component). 
-                Defaults to 'beLaboratory'.
-            collection (str, optional): The MongoDB collection where the wafer
-                is found (needed if the wafer is not passed as a full 
-                component). Defaults to 'components'.
-
-        Keyword args:
-            chipsKeyCriterion (callable, optional): A function that takes the
-                name of a chip as argument and returns the key to be used in the
-                chipsDictionary. (e.g. "2CDM0005_DR8-01" -> "DR8-01").
-                Defaults to None, in which case the chip dictionary is not
-                initialized.
-            barsKeyCriterion (callable): As above, for the bars. Defaults to
-                None, in which case the dictionary is not initialized.
-            testChipsKeyCriterion (callable, optional): Works similarly to
-                chipsKeyCriterion, but is used to defined the test chip dict.
-                Defaults to None, in which case the test chip dictionary is not
-                initialized.
-            waferMaskLabel (str): To be passed by the subclass of
-                waferCollation. Defaults to None, but raises an error if it
-                raises ImplementationError if it is not passed as a string.
-            chipsCheckNumber (int, optional): If passed, __init__ checks that
-                the amount of retrieved chip corresponds to this number.
-                This must include both normal and test chips.
-                Defaults to None.
-            chipBlueprintCheckNumber (int, optional): If passed, __init__ 
-                checks that the amount of retrieved chip blueprints corresponds
-                to this number. Defaults to None.
-            barsCheckNumber (int, optional): If passed, __init__ 
-                checks that the amount of retrieved bar components corresponds
-                to this number. Defaults to None.
 
         Raises:
             ImplementationError: When 
@@ -145,6 +106,13 @@ class waferCollation(c.collation):
             self.testCellBlueprints, self.testCellBPdict = \
                  self._collectTestCellBlueprints(self.waferBlueprint)
 
+            self._allComponentBPdict = _joinDictsOrNone(
+                self.chipBPdict,
+                self.testChipBPdict,
+                self.barBPdict,
+                self.testCellBPdict
+            )
+
             
             # Collecting chips, testChips and bars
             self.chips, self.chipsDict, \
@@ -158,10 +126,12 @@ class waferCollation(c.collation):
 
             self.allChips = _joinListsOrNone(self.chips, self.testChips)
             self.allChipsDict = _joinDictsOrNone(self.chipsDict, self.testChipsDict)
-            
+
             # Collecting testCells
             self.testCells, self.testCellsDict = \
-                self.collectTestCells(self.wafer, self. testCellBlueprints, self.testCellBPdict)
+                self._collectTestCells(self.wafer, self. testCellBlueprints, self.testCellBPdict)
+            
+            self._allComponentsDict = _joinDictsOrNone(self.allChipsDict, self.barsDict, self.testCellsDict)
         
             # wafer plotter
 
@@ -363,7 +333,7 @@ class waferCollation(c.collation):
 
         return chips, chipsDict, testChips, testChipsDict, bars, barsDict
 
-    def collectTestCells(self, wafer, cellBPs, cellBPsDict):
+    def _collectTestCells(self, wafer, cellBPs, cellBPsDict):
 
         testCells = wafer.TestCells.retrieveElements(self.connection)
         
@@ -447,26 +417,157 @@ class waferCollation(c.collation):
 
         return allNames
 
-    def retrieveDatasheetData(self,
-        resultName_orNames,
-        chipGroup_orGroups,
-        locationGroup:str):
 
-        if isinstance(chipGroup_orGroups, list):
-            chipGroups = chipGroup_orGroups
+    def retrieveData(self,
+        resultName_orNames,
+        chipType_orTypes,
+        chipGroup_orGroups = None,
+        locationGroup_orGroups = None,
+        searchDatasheetData:bool = False,
+        requiredStatus:str = None,
+        requiredProcessStage:str = None,
+        requiredTags:list = None,
+        tagsToExclude:list = None) -> dict:
+        """Returns a dictionary containing results collected from the wafer
+        collation.
+
+        Args:
+            resultName_orNames (str | List[str]): The name(s) of the result(s)
+                to be collected.
+            chipType_orTypes (str | List[str]): Pass any of the following
+                strings or a list of them to select which wafer components are
+                considered: "chips", "testChips", "bars", "testCells".
+                Defaults to "chips".
+            chipGroup_orGroups (str | List[str], optional): The group or groups
+                of chips that need to be considered. If the same group is
+                defined for, e.g., chips and test chips, all these chips will be
+                considered (if "chip" and "testChips" are both listed in
+                "chipType_orTypes").
+                Defaults to None, in which case all groups are considered.
+
+        For each chip, results are collected using the function 
+        "scoopComponentResults" (defined in mongoreader/goggleFunctions.py).
+        See its documentation for the meaning of arguments not listed below."""
+
+        if chipType_orTypes is None:
+            chipTypes = ['chips']
         else:
-            chipGroups = [chipGroup_orGroups]
+            if isinstance(chipType_orTypes, list):
+                chipTypes = chipType_orTypes
+            else:
+                chipTypes = [chipType_orTypes]
+
+            for el in chipTypes:
+                if not isinstance(el, str):
+                    raise TypeError('"chipType_orTypes" must be a string, a list of strings, or None.')
+
+        if not all([el in ['chips', 'testChips', 'bars', 'testCells'] for el in chipTypes]):
+            raise ValueError('Allowed values for "chipType_orTypes" are "chips", "testChips", "bars", "testCells".')
+
+        if chipGroup_orGroups is None:
+            chipGroups = None
+        else:
+            if isinstance(chipGroup_orGroups, list):
+                chipGroups = chipGroup_orGroups
+            else:
+                chipGroups = [chipGroup_orGroups]
+
+            for el in chipGroups:
+                if not isinstance(el, str):
+                    raise TypeError('"chipGroup_orGroups" must be a string, a list of strings or None.')
         
+        if locationGroup_orGroups is None:
+            locationGroups = None
+        else:
+            if isinstance(locationGroup_orGroups, list):
+                locationGroups = locationGroup_orGroups
+            else:
+                locationGroups = [locationGroup_orGroups]
+
+            for el in locationGroups:
+                if not isinstance(el, str):
+                    raise TypeError('"locationGroup_orGroups" must be a string, a list of strings or None.')
+                
+        
+        
+        # If chipGroup_orGroups is None, I collect all groups
+
+        # Collecting all relevant serials (labels)
         chipSerials = []
-        for group in chipGroups:
-            print(f'DEBUG: group {group}')
-            chipSerials += self.waferBlueprint.getWaferChipSerials(group)
+        for chipType in chipTypes:
+
+            if chipType == 'chips':
+                
+                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+
+                if chipGroups is None:
+                    groupsToScoop = chipTypeGroups
+                else:
+                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
+
+                for group in groupsToScoop:
+                    mom.log.debug(f'chipType-group: {chipType}-{group}')
+
+                    newSerials = self.waferBlueprint.ChipBlueprints.retrieveGroupLabels(group)
+                    if newSerials is not None: chipSerials += newSerials
+
+            if chipType == 'testChips':
+                
+                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+
+                if chipGroups is None:
+                    groupsToScoop = chipTypeGroups
+                else:
+                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
+                
+                for group in groupsToScoop:
+                    mom.log.debug(f'chipType-group: {chipType}-{group}')
+
+                    newSerials = self.waferBlueprint.TestChipBlueprints.retrieveGroupLabels(group)
+                    if newSerials is not None: chipSerials += newSerials
+            
+            if chipType == 'bars':
+                
+                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+
+                if chipGroups is None:
+                    groupsToScoop = chipTypeGroups
+                else:
+                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
+
+                for group in groupsToScoop:
+                    mom.log.debug(f'chipType-group: {chipType}-{group}')
+
+                    newSerials = self.waferBlueprint.BarBlueprints.retrieveGroupLabels(group)
+                    if newSerials is not None: chipSerials += newSerials
+            
+            if chipType == 'testCells':
+                
+                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+
+                if chipGroups is None:
+                    groupsToScoop = chipTypeGroups
+                else:
+                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
+                
+                for group in groupsToScoop:
+                    mom.log.debug(f'chipType-group: {chipType}-{group}')
+
+                    newSerials = self.waferBlueprint.TestCellBlueprints.retrieveGroupLabels(group)
+                    if newSerials is not None: chipSerials += newSerials
+
+        if chipSerials == []:
+            mom.log.warning(f'No labels associated to groups {chipGroups}')
         
         locationDict = {}
         for serial in chipSerials:
-            chipBp = self.chipBPdict[serial]
-            locNames = chipBp.getLocationNames(locationGroup)
-            locationDict[serial] = locNames
+            locationDict[serial] = []
+            bp = self._allComponentBPdict[serial]
+
+            for locGroup in locationGroups:
+                locNames = bp.Locations.retrieveGroupElements(locGroup)
+                if locNames is not None:
+                    locationDict[serial] += locNames
 
         if isinstance(resultName_orNames, str):
             resultNames = [resultName_orNames]
@@ -477,15 +578,20 @@ class waferCollation(c.collation):
                         for resName in resultNames}
 
         for serial in chipSerials:
-            goggled = chipGoggles.datasheedData(
-                            self.chipsDict[serial],
+            goggled = chipGoggles.scoopComponentResults(
+                            self._allComponentsDict[serial],
                             resultNames,
-                            locationDict[serial])
+                            locationDict[serial], # All location names
+                            searchDatasheetData,
+                            requiredStatus,
+                            requiredProcessStage,
+                            requiredTags,
+                            tagsToExclude)
 
             # goggled is in the form
             # {
-            #       <resultName1>: {<loc1>: <data1>,  <loc1>: <data2>, ...},
-            #       <resultName2>: {<loc1>: <data1>,  <loc1>: <data2>, ...},     
+            #       <resultName1>: {<loc1>: <data1>,  <loc2>: <data2>, ...},
+            #       <resultName2>: {<loc1>: <data1>,  <loc2>: <data2>, ...},     
             #       ...
             # }
             
@@ -498,11 +604,41 @@ class waferCollation(c.collation):
             return returnDict
 
 
+    def retrieveAveragedData(self,
+        resultName_orNames,
+        chipType_orTypes,
+        chipGroup_orGroups = None,
+        locationGroup_orGroups = None,
+        searchDatasheetData:bool = False,
+        requiredStatus:str = None,
+        requiredProcessStage:str = None,
+        requiredTags:list = None,
+        tagsToExclude:list = None) -> dict:
+        """Works like .retrieveData, but values are averaged to the chip-scale
+            level."""
+
+        dataDict_subchip = self.retrieveData(resultName_orNames,
+            chipType_orTypes,
+            chipGroup_orGroups,
+            locationGroup_orGroups,
+            searchDatasheetData,
+            requiredStatus,
+            requiredProcessStage,
+            requiredTags,
+            tagsToExclude)
+        
+        dataDict = averageSubchipScaleDataDict(dataDict_subchip)
+
+        return dataDict
+        
+
+
     def _plotStringField(self, chips, field_or_chain:str,
             groups:list = None,
             what:str = None,
             colorDict = None,
             title = None):
+        """Retrieve a given field from all "chips" and generates a plot."""
 
         if chips is None:
             if what is not None:
@@ -523,6 +659,7 @@ class waferCollation(c.collation):
 
 
     def plotStringField_allChips(self, field_or_chain:str, colorDict = None, title = None):
+        """Plots a given stringField for all the chips (normal and test chips)."""
         if title is None: title = f'Field "{field_or_chain}"'
         self._plotStringField(self.allChips, field_or_chain,
             groups = self.wplt.allChipGroups,
@@ -530,6 +667,7 @@ class waferCollation(c.collation):
             title = title)
 
     def plotStringField_chips(self, field_or_chain:str, colorDict = None, title = None):
+        """Plots a given stringField for the chips (normal chips only)."""
         if title is None: title = f'Field "{field_or_chain}"'
         self._plotStringField(self.chips, field_or_chain,
             groups = self.wplt.allowedChipGroups,
@@ -538,12 +676,16 @@ class waferCollation(c.collation):
 
     def plotStringField_testChips(self, field_or_chain:str, colorDict = None, title = None):
         if title is None: title = f'Field "{field_or_chain}"'
+        """Plots a given stringField for all the test chips."""
+
         self._plotStringField(self.testChips, field_or_chain,
             groups = self.wplt.allowedTestChipGroups,
             what = 'testChips', colorDict = colorDict,
             title = title)
 
     def plotStringField_testCells(self, field_or_chain:str, colorDict = None, title = None):
+        """Plots a given stringField for all the test cells."""
+
         if title is None: title = f'Field "{field_or_chain}"'
         self._plotStringField(self.testCells, field_or_chain,
             groups = self.wplt.allowedTestCellpGroups,
@@ -552,38 +694,45 @@ class waferCollation(c.collation):
 
 
     def plotStatus_allChips(self, colorDict = None):
+        """Plots the field "status" for all the chips (normal and test chips)."""
         self.plotStringField_allChips('status', colorDict = colorDict, title = 'Chip status')
 
     def plotStatus_chips(self, colorDict = None):
+        """Plots the field "status" for the chips (normal chips only)."""
         self.plotStringField_chips('status', colorDict = colorDict, title = 'Chip status')
 
     def plotStatus_testChips(self, colorDict = None):
+        """Plots the field "status" for the test chips."""
         self.plotStringField_testChips('status', colorDict = colorDict, title = 'Chip status')
 
     def plotStatus_testCells(self, colorDict = None):
+        """Plots the field "status" for the test cells."""
         self.plotStringField_testCells('status', colorDict = colorDict, title = 'Chip status')
 
 
     def plotProcessStage_allChips(self, colorDict = None):
+        """Plots the field "processStage" for all the chips (normal and test chips)."""
         self.plotStringField_allChips('processStage', colorDict = colorDict, title = 'Process Stage')
 
     def plotProcessStage_chips(self, colorDict = None):
+        """Plots the field "processStage" for the chips (normal chips only)."""
         self.plotStringField_chips('processStage', colorDict = colorDict, title = 'Process Stage')
 
     def plotProcessStage_testChips(self, colorDict = None):
+        """Plots the field "processStage" for the test chips."""
         self.plotStringField_testChips('processStage', colorDict = colorDict, title = 'Process Stage')
 
     def plotProcessStage_testCells(self, colorDict = None):
+        """Plots the field "processStage" for the test cells."""
         self.plotStringField_testCells('processStage', colorDict = colorDict, title = 'Process Stage')
 
 
-
-    def plotDatasheetData(self,
+    def plotResults(self,
         resultName:str,
-        chipGroup_orGroups,
         locationGroup:str,
+        chipType_orTypes = None,
+        chipGroup_orGroups = None,
         *,
-        dataType:str,
         colormapName:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -594,18 +743,61 @@ class waferCollation(c.collation):
         colorbarLabel:str = None,
         printChipLabels:bool = False,
         chipLabelsDirection:str = None,
-        dpi = None
+        dpi = None,
+        **kwargs
         ):
-        """Generates a subchip-scale plot of datasheet-ready data.
+        """Creates a subchip-scale plot of given results.
         
-        Returns the dataDict used to generate the plot."""
+        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
+        (defined in mongoreader/plotting/waferPlotting.py)
+
+        Args:
+            resultName (str): The name of the result to be plotted.
+            locationGroup (str): The location name associated to the results.
+            chipType_orTypes (str | List[str]): Pass any of the following
+                strings or a list of them to select which wafer components are
+                considered: "chips", "testChips", "bars", "testCells".
+                Defaults to "chips".
+            chipGroup_orGroups (str | List[str], optional): The group or groups
+                of chips that need to be considered. If the same group is
+                defined for, e.g., chips and test chips, all these chips will be
+                considered (if "chip" and "testChips" are both listed in
+                "chipType_orTypes").
+                Defaults to None, in which case all groups are considered.
+            
+
+        Keyword arguments (**kwargs):
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
+        """
 
         plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
     
-        dataDict = self.retrieveDatasheetData(
+        if chipType_orTypes is None:
+            chipType_orTypes == 'chips'
+
+            if chipGroup_orGroups is None:
+                chipGroup_orGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+        
+
+        dataDict = self.retrieveData(
             resultName,
+            chipType_orTypes,
             chipGroup_orGroups,
-            locationGroup
+            locationGroup,
+            **kwargs
         )
         
         if isinstance(chipGroup_orGroups, str):
@@ -615,7 +807,6 @@ class waferCollation(c.collation):
 
         plt.plotData_subchipScale(dataDict,
             title = resultName,
-            dataType=dataType,
             NoneColor = NoneColor,
             colormapName=colormapName,
             dataRangeMin = dataRangeMin,
@@ -632,6 +823,70 @@ class waferCollation(c.collation):
             )
 
         return dataDict
+
+
+    def plotAveragedResults(self,
+        resultName:str,
+        locationGroup:str,
+        chipType_orTypes = None,
+        chipGroup_orGroups = None,
+        *,
+        colormapName:str = None,
+        dataRangeMin:float = None,
+        dataRangeMax:float = None,
+        NoneColor = None,
+        clippingHighColor = None,
+        clippingLowColor = None,
+        BackColor = 'White',
+        colorbarLabel:str = None,
+        printChipLabels:bool = True,
+        chipLabelsDirection:str = None,
+        dpi = None,
+        **kwargs):
+        """Works like plotResults, but data is first averaged to a chip-scale
+        level."""
+
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
+    
+        if chipType_orTypes is None:
+            chipType_orTypes == 'chips'
+
+            if chipGroup_orGroups is None:
+                chipGroup_orGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+        
+
+        dataDict = self.retrieveAveragedData(
+            resultName,
+            chipType_orTypes,
+            chipGroup_orGroups,
+            locationGroup,
+            **kwargs
+        )
+        
+        if isinstance(chipGroup_orGroups, str):
+            chipGroups = [chipGroup_orGroups]
+        else:
+            chipGroups = chipGroup_orGroups
+
+        plt.plotData_chipScale(dataDict,
+            title = resultName + ' (Averaged)',
+            NoneColor = NoneColor,
+            colormapName=colormapName,
+            dataRangeMin = dataRangeMin,
+            dataRangeMax = dataRangeMax,
+            clippingHighColor = clippingHighColor,
+            clippingLowColor = clippingLowColor,
+            BackColor = BackColor,
+            waferName = self.wafer.name,
+            chipGroups = chipGroups,
+            colorbarLabel = colorbarLabel,
+            printChipLabels = printChipLabels,
+            chipLabelsDirection = chipLabelsDirection,
+            dpi = dpi,
+            )
+
+        return dataDict
+
 
 
 
@@ -732,27 +987,30 @@ class waferCollation(c.collation):
     @staticmethod
     def _printWaferInfo(wafer, printIDs:bool = False):
 
-        nameStr = f'{"[wafer]":>7} {_nameString(wafer, printIDs)}'
-        statusStr = _statusString(wafer)
-        string = f'{nameStr} :: {statusStr}'
+        nameStr = f'{"[wafer]":>11}   {_nameString(wafer, printIDs)}'
+        statusStr = f'{wafer.getField("status", "<No status>", verbose = False):20}'
+        stageStr = f'{wafer.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        string = f'{nameStr} {stageStr} {statusStr}'
         
         print(string)
 
     @staticmethod
     def _printBarInfo(bar, printIDs:bool = False):
 
-        nameStr = f'{"[bar]":>7} {_nameString(bar, printIDs)}'
-        statusStr = _statusString(bar)
-        string = f'{nameStr} :: {statusStr}'
+        nameStr = f'{"[bar]":>11}   {_nameString(bar, printIDs)}'
+        statusStr = f'{bar.getField("status", "<No status>", verbose = False):20}'
+        stageStr = f'{bar.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        string = f'{nameStr} {stageStr} {statusStr}'
 
         print(string)
 
     @staticmethod
     def _printChipInfo(chip, label, printIDs:bool = False):
 
-        nameStr = f'{"[{label}]":>7} {_nameString(chip, printIDs)}'
-        statusStr = _statusString(chip)
-        string = f'{nameStr} :: {statusStr}'
+        nameStr = f'{f"[{label}]":>11}   {_nameString(chip, printIDs)}'
+        statusStr = f'{chip.getField("status", "<No status>", verbose = False):20}'
+        stageStr = f'{chip.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        string = f'{nameStr} {stageStr} {statusStr}'
 
         print(string)
 
@@ -812,6 +1070,12 @@ class waferCollation(c.collation):
                 self._printChipInfo(chip, 'test cell', printIDs)
         
 
+
+# ------------------------------------------------------------------------------
+
+# These other subclass perform a check on the name of the wafer to issue a
+# warning if it dies not correspond. It is the only change compared to the
+# base waferCollation class.
 
 
 class waferCollation_Bilbao(waferCollation):
@@ -878,7 +1142,31 @@ class waferCollation_Coimbra(waferCollation):
             log.warning(f'The collected wafer ("{self.wafer.name}") may not be a "Coimbra" wafer.')
 
 
+
+# ------------------------------------------------------------------------------
 # Utilities functions
+# ------------------------------------------------------------------------------
+
+
+def averageSubchipScaleDataDict(dataDict_subchipScale):
+    """Given a subchip-scale datadict, it returns a chip-scale dictionary
+    with averaged values.
+    
+    Non-float/int and None values are ignored."""
+
+    def averageValues(values):
+
+        values = [v for v in values if isinstance(v, int) or isinstance(v, float)]
+        
+        if values == []:
+            return None
+        
+        return average(values)
+
+    dataDict = {key: averageValues(d.values())
+                for key, d in dataDict_subchipScale.items()}
+    return dataDict
+
 
 def queryWafers(connection:mom.connection, *, waferType:str = None, returnType:str = 'name'):
     """Queries beLaboratory/components for wafers.
@@ -976,6 +1264,36 @@ def _nameString(component, printIDs = False):
     if symbols is not None:
         name += f' ({symbols})'
 
-    nameStr += f'{name:30}'
+    nameStr += f'{name:35}'
     
     return nameStr
+
+
+
+def _joinListsOrNone(*args):
+    """Returns a single dictionary from a arguments that can be lists or None."""
+    returnList = []
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, list):
+            raise TypeError('All arguments must be lists or None.')
+        else:
+            returnList += arg
+
+    return returnList
+
+def _joinDictsOrNone(*args):
+    """Returns a single dictionary from a arguments that can be dictionaries or None."""
+    returnDict = {}
+
+    for arg in args:
+        if arg is None:
+            continue
+        elif not isinstance(arg, dict):
+            raise TypeError('All arguments must be dictionaries or None.')
+        else:
+            returnDict |= arg
+
+    return returnDict

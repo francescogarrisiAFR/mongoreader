@@ -106,11 +106,13 @@ class _waferPlotter:
             self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
             self.testChipP1P2s = waferBP.retrieveTestChipP1P2s(connection)
             self.testCellP1P2s = waferBP.retrieveTestCellP1P2s(connection)
+            self.barsP1P2s = waferBP.retrieveBarP1P2s(connection)
 
             self.allP1P2s = _joinDictsOrNone(
                 self.chipP1P2s,
                 self.testChipP1P2s,
-                self.testCellP1P2s
+                self.testCellP1P2s,
+                self.barsP1P2s,
             )
             
 
@@ -136,6 +138,8 @@ class _waferPlotter:
             list[str]: The list of labels. Does NOT return None.
         """
 
+        log.debug(f'[_chipGroupLabels] groups: {groups}')
+
         if groups is None:
             log.debug(f'[_chipGroupLabels] Returning all labels: {self.allLabels}')
             return self.allLabels
@@ -145,7 +149,9 @@ class _waferPlotter:
         if not isinstance(groups, list):
                 raise TypeError(f'"groups" must be a list of strings among {allowedGroupString}.')
 
+        log.debug(f'[_chipGroupLabels] allGroups: {self.allGroups}')
         for el in groups:
+            log.debug(f'[_chipGroupLabels] group: {el}')
             if not el in self.allGroups:
                 raise ValueError(f'"groups" must be a list of strings among {allowedGroupString}.')
 
@@ -407,8 +413,11 @@ class _waferPlotter:
         colormapName:str = None,
         colorDict:dict = None,
         NoneColor = None,
+        wrongDataTypeColor = None,
         clippingLowColor = None,
         clippingHighColor = None,
+        TrueColor = None,
+        FalseColor = None,
         chipGroups:list = None,
         ):
         """Given the data dictionary and dataType arguments, this method
@@ -458,8 +467,14 @@ class _waferPlotter:
         """        
 
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+        if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
         
         rangeMin, rangeMax = None, None
+
+        if dataType is None: dataType = self._determineDataType(dataDict)
+
+        if dataType == None: # All values are None -> I plot it as string
+            dataType = 'string'
 
         if dataType == 'float':
             # Determining ranges
@@ -478,7 +493,7 @@ class _waferPlotter:
                     
                 if dataType == 'float':
                     chipColors, _, _ = c.floatsColors(chipValues, colormapName,
-                        rangeMin, rangeMax, NoneColor,
+                        rangeMin, rangeMax, NoneColor, wrongDataTypeColor,
                         clippingLowColor, clippingHighColor)
 
                 elif dataType == 'string':
@@ -486,7 +501,8 @@ class _waferPlotter:
                     chipColors, colorDict = c.stringsColors(chipValues, colormapName, NoneColor, colorDict)
 
                 elif dataType == 'bool':
-                    raise NotImplementedError('Bool data plotting is not yet implemented.')
+                    chipColors, colorDict = c.boolsColor(chipValues, TrueColor, FalseColor,
+                        NoneColor, wrongDataTypeColor)
 
 
                 subPatches = self._chipSubPatches(chipLabel, chipColors)
@@ -495,16 +511,55 @@ class _waferPlotter:
             
         return subchipPatches, rangeMin, rangeMax, colorDict
 
+    @staticmethod
+    def _determineDataType(dataDict:dict):
+
+        # First, I collect all the values in the dataDict, depending on whether
+        # it is chip-scale or subchip-scale
+
+        if all([isinstance(v, dict) for v in dataDict.values()]):
+            # Sub-chip scale
+
+            values = []
+            for dic in dataDict.values():
+                values += list(dic.values())
+        
+        elif any([isinstance(v, dict) for v in dataDict.values()]):
+            # Only some values are dictionaries
+
+            raise TypeError(f'"dataDict" is not specified correctly: some but not all inner values are dictionaries.')
+        
+        else:
+            # Chip-scale
+            values = list(dataDict.values())
+        
+        if all([v is None for v in values]):
+            return None
+
+        elif all([v is None or isinstance(v, str) for v in values]):
+            return "string"
+        
+        elif all([v is None or isinstance(v, bool) for v in values]):
+            return "boolean"
+        
+        elif all([v is None or isinstance(v, int) or isinstance(v, float) for v in values]):
+            return "float"
+        
+        else:
+            raise ValueError(f'Data type of dataDict could not be determined. Either mixed data types are present, or types other than the ones allowed (string, bool, float/int, None).')
 
     def _allChipPatches(self, dataDict:dict, *,
-        dataType:str,
+        dataType:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         colormapName:str = None,
         colorDict:dict = None,
         NoneColor = None,
+        wrongDataTypeColor = None,
         clippingLowColor = None,
-        clippingHighColor = None):
+        clippingHighColor = None,
+        TrueColor = None,
+        FalseColor = None):
         """Given the data dictionary and dataType arguments, this method
         generates all the patches of the chips to be included in the plot.
 
@@ -519,8 +574,9 @@ class _waferPlotter:
 
         Args:
             dataDict (dict): The data dictionary,
-            dataType (str): The kind of data in the dictionary (currently 
-                "float" or "string").
+            dataType (str, optional): The kind of data in the dictionary
+                (currently "float" or "string"). If None, the dataType is
+                autodetermined.
             dataRangeMin (float, optional): The minimum range value for the
                 data. Defaults to None.
             dataRangeMax (float, optional): The maximum range value for the
@@ -531,7 +587,11 @@ class _waferPlotter:
                 associated to string data ({<string1>: <color1>, <string2>:
                 <color2>, ...}). Defaults to None.
             NoneColor (str|3-tuple[float], optional): The color associated to
-                None values in the data dictionary. Defaults to None.
+                None values in the data dictionary. Defaults to
+                .colors.NONE_COLOR.
+            wrongDataTypeColor (str|3-tuple[float], optional): The color
+                associated to values that are not consistent with dataType.
+                Defaults to .colors.DEFAULT_WRONGDATATYPE_COLOR
             clippingLowColor (str|3-tuple[float], optional): If passed, values
                 below "dataRangeMin" will be rendered with this color,
                 otherwise the extreme color of the matplotlib colormap is used.
@@ -549,32 +609,42 @@ class _waferPlotter:
         """
     
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+        if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
     
-        rangeMin, rangeMax = None, None
+        rangeMin, rangeMax, colorDict = None, None, None
 
         log.debug(f'[_allChipSubpatches] dataDict: {dataDict}')
         
+
+        if dataType is None: dataType = self._determineDataType(dataDict)
+
+
+        if dataType == None: # All values are None -> I plot it as string
+            dataType = 'string'
+
         if dataType == 'float':
             # Determining ranges
             rangeMin, rangeMax = autoRangeDataDict(dataDict,
                     dataRangeMin, dataRangeMax)
         
+
         chipLabels = list(dataDict.keys())
         log.debug(f'[_allChipSubpatches] chipLabels: {chipLabels}')
         chipValues = list(dataDict.values())
         log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
 
+
         if dataType == 'float':
-            chipColors, _, _ = c.floatsColors(chipValues, colormapName,
-                rangeMin, rangeMax, NoneColor,
+            chipColors, rangeMin, rangeMax = c.floatsColors(chipValues, colormapName,
+                rangeMin, rangeMax, NoneColor, wrongDataTypeColor,
                 clippingLowColor, clippingHighColor)
         elif dataType == 'string':
             # log.debug(f'[_allChipSubpatches] chipValues: {chipValues}')
             chipColors, colorDict = c.stringsColors(chipValues,
-                colormapName, NoneColor, colorDict)
+                colormapName, NoneColor, wrongDataTypeColor, colorDict)
         elif dataType == 'bool':
-            raise NotImplementedError('Bool data plotting is not yet implemented.')
-
+            chipColors, colorDict = c.boolsColor(chipValues, TrueColor, FalseColor,
+                NoneColor, wrongDataTypeColor)
 
         chipPatches = [self._chipPatch(lab, col)
                     for lab, col in zip (chipLabels, chipColors)]
@@ -584,13 +654,16 @@ class _waferPlotter:
     # Mid level plotting methods
 
     def plotData_chipScale(self, dataDict:dict, title:str = None, *, 
-        dataType:str,
+        dataType:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = None,
+        wrongDataTypeColor = None,
         colorDict:dict = None,
         clippingHighColor = None,
         clippingLowColor = None,
+        TrueColor = None,
+        FalseColor = None,
         BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
@@ -604,10 +677,7 @@ class _waferPlotter:
         when a single value is associated to each chip.
 
         The arguments can be used to customize the plot in various ways, as
-        described below.
-
-        The method expects at least the data dictionary and the dataType
-        arguments, which specify the kind of data present in the dictionary.
+        described below..
 
         The dataDictionary must be in the form:
         >>> {
@@ -630,7 +700,7 @@ class _waferPlotter:
         Args:
             dataDict (dict): The data dictionary.
             dataType (str): The kind of data in the dictionary (currently 
-                "float" or "string").
+                "float", "string" or "bool").
             title (str, optional): The title string that is put at the top of
                 the plot. Defaults to None.
             dataRangeMin (float, optional): The minimum range value for the
@@ -639,6 +709,8 @@ class _waferPlotter:
                 data. Defaults to None.
             NoneColor (str|3-tuple, optional): The color used for None values.
                 Defaults to None.
+            wrongDataTypeColor (str|3-tuple, optional): The color used for 
+                values whose type does not match dataType or None.
             colorDict (dict, optional): If passed, it is the dictionary that 
                 associates colors to string-type values. If not passed, colors
                 are determined automatically form the colormap used. Defaults
@@ -651,6 +723,10 @@ class _waferPlotter:
                 above "dataRangeMax" will be rendered with this color,
                 otherwise the extreme color of the matplotlib colormap is used.
                 Defaults to None.
+            TrueColor (str|3-tuple[float], optional): The color assigned to
+                True bool values.
+            FalseColor (str|3-tuple[float], optional): The color assigned to
+                False bool values.
             BackColor (str|3-tuple, optional): The color used to render chips
                 that are not present in the data dictionary (relevant when the
                 chip groups selected contain chips that are not included in the 
@@ -691,6 +767,12 @@ class _waferPlotter:
         backChipPatches = [self._chipPatch(l, BackColor) for l in plotLabels
                 if l not in dataDict]
 
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+        if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
+
+        if dataType is None:
+            dataType = self._determineDataType(dataDict)
+
         chipPatches, rangeMin, rangeMax, colorDict = \
             self._allChipPatches(dataDict, dataType = dataType,
                 dataRangeMin = dataRangeMin,
@@ -698,22 +780,26 @@ class _waferPlotter:
                 colormapName = colormapName,
                 colorDict = colorDict,
                 NoneColor = NoneColor,
+                wrongDataTypeColor = wrongDataTypeColor,
                 clippingLowColor = clippingLowColor,
-                clippingHighColor = clippingHighColor)
+                clippingHighColor = clippingHighColor,
+                TrueColor = TrueColor,
+                FalseColor = FalseColor)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += backChipPatches
         allPatches += chipPatches
 
         # Plot settings
-
-        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
             
-        legendDict = {'Data n/a': NoneColor}
+        legendDict = {'Data n/a': NoneColor, 'Wrong data type': wrongDataTypeColor}
         if clippingLowColor is not None:
             legendDict['Under-range'] = clippingLowColor
         if clippingHighColor is not None:
             legendDict['Over-range'] = clippingHighColor
+
+        if dataType == None:
+            printBar = False
 
         if dataType == 'float':
             printBar = True
@@ -722,6 +808,11 @@ class _waferPlotter:
             printBar = False
             for string, color in colorDict.items():
                 legendDict[string] = color
+
+        if dataType == 'bool':
+            printBar = False
+            for boolean, color in colorDict.items():
+                legendDict[str(boolean)] = color
             
         # Plotting
         fig, ax = self._plot(allPatches, rangeMin, rangeMax,
@@ -742,13 +833,16 @@ class _waferPlotter:
         # print(f'DEBUG: {rangeMax}')
 
     def plotData_subchipScale(self, dataDict, title:str = None, *,
-        dataType:str,
+        dataType:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = None,
         colorDict:dict = None,
+        wrongDataTypeColor = None,
         clippingHighColor = None,
         clippingLowColor = None,
+        TrueColor = None,
+        FalseColor = None,
         BackColor = 'White',
         chipGroups:list = None,
         waferName:str = None,
@@ -808,6 +902,8 @@ class _waferPlotter:
                 data. Defaults to None.
             NoneColor (str|3-tuple, optional): The color used for None values.
                 Defaults to None.
+            wrongDataTypeColor (str|3-tuple, optional): The color used for 
+                values whose type does not match dataType or None.
             colorDict (dict, optional): If passed, it is the dictionary that 
                 associates colors to string-type values. If not passed, colors
                 are determined automatically form the colormap used. Defaults
@@ -820,6 +916,10 @@ class _waferPlotter:
                 above "dataRangeMax" will be rendered with this color,
                 otherwise the extreme color of the matplotlib colormap is used.
                 Defaults to None.
+            TrueColor (str|3-tuple[float], optional): The color assigned to
+                True bool values.
+            FalseColor (str|3-tuple[float], optional): The color assigned to
+                False bool values.
             BackColor (str|3-tuple, optional): The color used to render chips
                 that are not present in the data dictionary (relevant when the
                 chip groups selected contain chips that are not included in the 
@@ -860,6 +960,12 @@ class _waferPlotter:
         plotLabels = self._chipGroupLabels(chipGroups)
         chipPatches = [self._chipPatch(l, BackColor) for l in plotLabels]
 
+        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
+        if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
+
+        if dataType is None:
+            dataType = self._determineDataType(dataDict)
+
         subchipPatches, rangeMin, rangeMax, colorDict = \
             self._allChipSubpatches(dataDict,
                 dataType = dataType,
@@ -867,9 +973,12 @@ class _waferPlotter:
                 colormapName = colormapName,
                 colorDict = colorDict,
                 NoneColor = NoneColor,
+                wrongDataTypeColor = wrongDataTypeColor,
                 clippingLowColor = clippingLowColor,
                 clippingHighColor = clippingHighColor,
-                chipGroups = chipGroups)
+                chipGroups = chipGroups,
+                TrueColor = TrueColor,
+                FalseColor = FalseColor)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
         allPatches += chipPatches
@@ -877,13 +986,14 @@ class _waferPlotter:
 
         # Plot settings
 
-        if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
-
         legendDict = {'Data n/a': NoneColor}
         if clippingLowColor is not None:
             legendDict['Under-range'] = clippingLowColor
         if clippingHighColor is not None:
             legendDict['Over-range'] = clippingHighColor
+
+        if dataType == None:
+            printBar = False
 
         if dataType == 'float':
             printBar = True
@@ -892,7 +1002,14 @@ class _waferPlotter:
             printBar = False
             for string, color in colorDict.items():
                 legendDict[string] = color
-            
+        
+        if dataType == 'bool':
+            printBar = False
+            for boolean, color in colorDict.items():
+                legendDict[str(boolean)] = color
+        
+        log.debug(f'[plotData_subchipScale] dataType: {dataType}')
+
         # Plotting
         fig, ax=self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
