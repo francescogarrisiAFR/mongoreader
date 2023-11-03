@@ -97,9 +97,9 @@ class _waferPlotter:
             # A dictionaries containing all the group -> labels relations
             
             self.groupToLabelsDict = _joinDictsOrNone(
-                waferBP.ChipBlueprints.retrieveGroupDict(),
-                waferBP.TestChipBlueprints.retrieveGroupDict(),
-                waferBP.TestCellBlueprints.retrieveGroupDict()
+                waferBP.ChipBlueprints.retrieveGroupsDict(),
+                waferBP.TestChipBlueprints.retrieveGroupsDict(),
+                waferBP.TestCellBlueprints.retrieveGroupsDict()
             )
 
             # dicts, None if not found
