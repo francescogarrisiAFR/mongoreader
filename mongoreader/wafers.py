@@ -343,6 +343,39 @@ class waferCollation(c.collation):
         
         return testCells, testCellsDict
 
+    # ---------------------------------------------------
+    # Internal utility functions
+
+    _allowedChipTypes = ["chips", "testChips", "testCells", "bars"]
+
+    def _componentsFromType(self, chipTypes:list):
+
+        if not isinstance(chipTypes):
+            raise TypeError('"chipTypes" must be a list of strings.')
+        if not all([isinstance(el, str) for el in chipTypes]):
+            raise TypeError('"chipTypes" must be a list of strings.')
+
+        if not all([el in self._allowedChipTypes for el in chipTypes]):
+            raise ValueError('"chipTypes" must contain strings among '\
+                             +', '.join(f'"{s}"' for s in self._allowedChipTypes))
+        
+        cmpsToReturn = []
+
+        for chipType in chipTypes:
+            
+            if chipType == "chips":
+                cmpsToReturn += self.chips
+            elif chipType == 'testChips':
+                cmpsToReturn += self.testChips
+            elif chipType == "testCells":
+                cmpsToReturn += self.testCells
+            elif chipType == "bars":
+                cmpsToReturn += self.bars
+
+        return cmpsToReturn
+        
+
+    # ---------------------------------------------------
 
 
     def refresh(self):
@@ -358,7 +391,7 @@ class waferCollation(c.collation):
 
             self.waferBlueprint.mongoRefresh(self.connection)
             log.spare(f'Refreshed waferBlueprint "{self.waferBlueprint.name}".')
-        
+
             if self.chips is not None:
                 for chip in self.chips: chip.mongoRefresh(self.connection)
                 log.spare(f'Refreshed chips.')
@@ -424,8 +457,8 @@ class waferCollation(c.collation):
         chipGroup_orGroups = None,
         locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
-        requiredStatus:str = None,
-        requiredProcessStage:str = None,
+        requiredStatus_orList = None,
+        requiredProcessStage_orList = None,
         requiredTags:list = None,
         tagsToExclude:list = None) -> dict:
         """Returns a dictionary containing results collected from the wafer
@@ -513,7 +546,7 @@ class waferCollation(c.collation):
 
             if chipType == 'testChips':
                 
-                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+                chipTypeGroups = self.waferBlueprint.TestChipBlueprints.retrieveGroupNames()
 
                 if chipGroups is None:
                     groupsToScoop = chipTypeGroups
@@ -528,7 +561,7 @@ class waferCollation(c.collation):
             
             if chipType == 'bars':
                 
-                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+                chipTypeGroups = self.waferBlueprint.BarBlueprints.retrieveGroupNames()
 
                 if chipGroups is None:
                     groupsToScoop = chipTypeGroups
@@ -543,7 +576,7 @@ class waferCollation(c.collation):
             
             if chipType == 'testCells':
                 
-                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+                chipTypeGroups = self.waferBlueprint.TestCellBlueprints.retrieveGroupNames()
 
                 if chipGroups is None:
                     groupsToScoop = chipTypeGroups
@@ -583,8 +616,8 @@ class waferCollation(c.collation):
                             resultNames,
                             locationDict[serial], # All location names
                             searchDatasheetData,
-                            requiredStatus,
-                            requiredProcessStage,
+                            requiredStatus_orList,
+                            requiredProcessStage_orList,
                             requiredTags,
                             tagsToExclude)
 
@@ -610,8 +643,8 @@ class waferCollation(c.collation):
         chipGroup_orGroups = None,
         locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
-        requiredStatus:str = None,
-        requiredProcessStage:str = None,
+        requiredStatus_orList = None,
+        requiredProcessStage_orList = None,
         requiredTags:list = None,
         tagsToExclude:list = None) -> dict:
         """Works like .retrieveData, but values are averaged to the chip-scale
@@ -622,8 +655,8 @@ class waferCollation(c.collation):
             chipGroup_orGroups,
             locationGroup_orGroups,
             searchDatasheetData,
-            requiredStatus,
-            requiredProcessStage,
+            requiredStatus_orList,
+            requiredProcessStage_orList,
             requiredTags,
             tagsToExclude)
         

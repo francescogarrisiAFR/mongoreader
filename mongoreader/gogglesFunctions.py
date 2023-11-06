@@ -17,8 +17,8 @@ class chipGoggleFunctions:
             searchResultName_orNames,
             locationNames:str = None,
             searchDatasheetReady:bool = True,
-            requiredStatus:str = None,
-            requiredProcessStage:str = None,
+            requiredStatus_orList = None,
+            requiredProcessStage_orList = None,
             requiredTags:list = None,
             tagsToExclude:list = None,
             ) -> list:
@@ -45,12 +45,16 @@ class chipGoggleFunctions:
                 have the field "datasheetReady" set to True are scooped.
                 If "datasheetReady" is False or missing, the result is ignored.
                 Defaults to True.
-            requiredStatus (str, optional): If passed, only test entries whose
-                "status" field is equal to requiredStatus are considered.
-                Defaults to None.
-            requiredProcessStage (str, optional): If passed, only test entries
-                whose "processStage" field is equal to requiredStatus are
-                considered. Defaults to None.
+            requiredStatus_orList (str | list[str], optional): If passed, only
+                test entries whose "status" field is equal to requiredStatus are
+                considered. If a list is passed, all the elements are considered
+                a valid status requirement. Defaults to None, in which case
+                "status" is ignored.
+            requiredProcessStage_orList (str | list[str], optional): If passed,
+                only test entries whose "processStage" field is equal to
+                requiredStatus are considered. If a list is passed, all the
+                elements are considered a valid status requirement. Defaults to
+                None, in which case "processStage" is ignored.
             requiredTags (list[str], optional): If passed, results which lack
                 the tags listed here are ignored. Defaults to None.
             tagsToExclude (list[str], optional): If passed, results that have
@@ -78,13 +82,35 @@ class chipGoggleFunctions:
                 if not isinstance(name, str):
                     raise TypeError('"locationNames" must be a list of string.')
 
-        if requiredStatus is not None:
-            if not isinstance(requiredStatus, str):
-                raise TypeError('"requiredStatus" must be a string or None.')
+        if requiredStatus_orList is None:
+            requiredStati = None
+        else:
+            if isinstance(requiredStatus_orList, str):
+                requiredStati = [requiredStatus_orList]
+            else:
+                if not isinstance(requiredStatus_orList, list):
+                    raise TypeError('"requiredStatus_orList" must be a string, a list of strings, or None.')    
+                for el in requiredStatus_orList:
+                    if not isinstance(el, str):
+                        raise TypeError('"requiredStatus_orList" must be a string, a list of strings, or None.')   
+                requiredStati = requiredStatus_orList
+
+        if requiredProcessStage_orList is None:
+            requiredStages = None
+        else:
+            if isinstance(requiredProcessStage_orList, str):
+                requiredStages = [requiredProcessStage_orList]
+            else:
+                if not isinstance(requiredProcessStage_orList, list):
+                    raise TypeError('"requiredProcessStage_orList" must be a string, a list of strings, or None.')    
+                for el in requiredProcessStage_orList:
+                    if not isinstance(el, str):
+                        raise TypeError('"requiredProcessStage_orList" must be a string, a list of strings, or None.')    
+                requiredStages = requiredProcessStage_orList
             
-        if requiredProcessStage is not None:
-            if not isinstance(requiredProcessStage, str):
-                raise TypeError('"requiredProcessStage" must be a string or None.')
+        if requiredProcessStage_orList is not None:
+            if not isinstance(requiredProcessStage_orList, str):
+                raise TypeError('"requiredProcessStage_orList" must be a string or None.')
             
         if requiredTags is not None:
             if not isinstance(requiredTags, list):
@@ -105,12 +131,12 @@ class chipGoggleFunctions:
 
         # Searching general entry fields
 
-        if requiredStatus is not None:
-            if testEntry.get('status') != requiredStatus:
+        if requiredStati is not None:
+            if testEntry.get('status') not in requiredStati:
                 return None
         
-        if requiredProcessStage is not None:
-            if testEntry.get('processStage') != requiredProcessStage:
+        if requiredStages is not None:
+            if testEntry.get('processStage') not in requiredStages:
                 return None
 
         # Search individual result dictionaries in entry
@@ -180,8 +206,8 @@ class chipGoggleFunctions:
             resultName_orNames, 
             locationNames:str,
             searchDatasheetReady:bool = True,
-            requiredStatus:str = None,
-            requiredProcessStage:str = None,
+            requiredStatus_orList:str = None,
+            requiredProcessStage_orList:str = None,
             requiredTags:list = None,
             tagsToExclude:list = None) -> dict:
         """This function scoops the test history of a component to return a 
@@ -197,12 +223,16 @@ class chipGoggleFunctions:
                 have the field "datasheetReady" set to True are scooped.
                 If "datasheetReady" is False or missing, the result is ignored.
                 Defaults to True.
-            requiredStatus (str, optional): If passed, only test entries whose
-                "status" field is equal to requiredStatus are considered.
-                Defaults to None.
-            requiredProcessStage (str, optional): If passed, only test entries
-                whose "processStage" field is equal to requiredStatus are
-                considered. Defaults to None.
+            requiredStatus_orList (str | list[str], optional): If passed, only
+                test entries whose "status" field is equal to requiredStatus are
+                considered. If a list is passed, all the elements are considered
+                a valid status requirement. Defaults to None, in which case
+                "status" is ignored.
+            requiredProcessStage_orList (str | list[str], optional): If passed,
+                only test entries whose "processStage" field is equal to
+                requiredStatus are considered. If a list is passed, all the
+                elements are considered a valid status requirement. Defaults to
+                None, in which case "processStage" is ignored.
             requiredTags (list[str], optional): If passed, results which lack
                 the tags listed here are ignored. Defaults to None.
             tagsToExclude (list[str], optional): If passed, results that have
@@ -246,8 +276,8 @@ class chipGoggleFunctions:
                             resultName_orNames,
                             locationNames,
                             searchDatasheetReady,
-                            requiredStatus,
-                            requiredProcessStage,
+                            requiredStatus_orList,
+                            requiredProcessStage_orList,
                             requiredTags,
                             tagsToExclude)
 
@@ -300,8 +330,8 @@ class chipGoggleFunctions:
     def scoopComponentResults(cls, component, resultName_orNames,
                                 locationNames:str,
                                 searchDatasheetReady:bool = True,
-                                requiredStatus:str = None,
-                                requiredProcessStage:str = None,
+                                requiredStatus_orList:str = None,
+                                requiredProcessStage_orList:str = None,
                                 requiredTags:list = None,
                                 tagsToExclude:list = None):
         """This function scoops the test history of a component to return a 
@@ -318,12 +348,16 @@ class chipGoggleFunctions:
                 have the field "datasheetReady" set to True are scooped.
                 If "datasheetReady" is False or missing, the result is ignored.
                 Defaults to True.
-            requiredStatus (str, optional): If passed, only test entries whose
-                "status" field is equal to requiredStatus are considered.
-                Defaults to None.
-            requiredProcessStage (str, optional): If passed, only test entries
-                whose "processStage" field is equal to requiredStatus are
-                considered. Defaults to None.
+            requiredStatus_orList (str | list[str], optional): If passed, only
+                test entries whose "status" field is equal to requiredStatus are
+                considered. If a list is passed, all the elements are considered
+                a valid status requirement. Defaults to None, in which case
+                "status" is ignored.
+            requiredProcessStage_orList (str | list[str], optional): If passed,
+                only test entries whose "processStage" field is equal to
+                requiredStatus are considered. If a list is passed, all the
+                elements are considered a valid status requirement. Defaults to
+                None, in which case "processStage" is ignored.
             requiredTags (list[str], optional): If passed, results which lack
                 the tags listed here are ignored. Defaults to None.
             tagsToExclude (list[str], optional): If passed, results that have
@@ -342,7 +376,8 @@ class chipGoggleFunctions:
         
         scoopedDict = cls.scoopResultsFromHistory(history,
             resultName_orNames, locationNames, searchDatasheetReady,
-            requiredStatus, requiredProcessStage, requiredTags, tagsToExclude)
+            requiredStatus_orList, requiredProcessStage_orList, requiredTags,
+            tagsToExclude)
 
         if isinstance(resultName_orNames, str):
             return scoopedDict[resultName_orNames]
