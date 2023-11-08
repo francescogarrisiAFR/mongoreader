@@ -67,39 +67,70 @@ class _waferPlotter:
             # lists, None if not found
             self.allowedChipGroups = waferBP.ChipBlueprints.retrieveGroupNames()
             self.allowedTestChipGroups = waferBP.TestChipBlueprints.retrieveGroupNames()
-            self.allowedTestCellpGroups = waferBP.TestCellBlueprints.retrieveGroupNames()
+            self.allowedTestCellGroups = waferBP.TestCellBlueprints.retrieveGroupNames()
+            self.allowedBarGroups = waferBP.BarBlueprints.retrieveGroupNames()
+
+            # A dictionary containing all the chipType -> allowed groups relations
+            self.allowedGroupsDict = {
+                'chips': self.allowedChipGroups,
+                'testChips': self.allowedTestChipGroups,
+                'testCells': self.allowedTestCellGroups,
+                'bars': self.allowedBarGroups,
+            }
 
             self.allChipGroups = _joinListsOrNone(
                 self.allowedChipGroups,
                 self.allowedTestChipGroups,
             )
+            self.chipCellGroups = _joinListsOrNone(
+                self.allowedChipGroups,
+                self.allowedTestChipGroups,
+                self.allowedTestCellGroups,
+            )
             self.allGroups = _joinListsOrNone(
                 self.allowedChipGroups,
                 self.allowedTestChipGroups,
-                self.allowedTestCellpGroups
+                self.allowedTestCellGroups,
+                self.allowedBarGroups
             )
 
             # lists, None if not found
             self.chipLabels = waferBP.ChipBlueprints.retrieveLabels()
             self.testChipLabels = waferBP.TestChipBlueprints.retrieveLabels()
             self.testCellLabels = waferBP.TestCellBlueprints.retrieveLabels()
+            self.barLabels = waferBP.BarBlueprints.retrieveLabels()
 
             self.allChipLabels = _joinListsOrNone(
                 self.chipLabels,
                 self.testChipLabels,
             )
+            self.chipCellLabels = _joinListsOrNone(
+                self.chipLabels,
+                self.testChipLabels,
+                self.testCellLabels,
+            )
             self.allLabels = _joinListsOrNone(
                 self.chipLabels,
                 self.testChipLabels,
-                self.testCellLabels
+                self.testCellLabels,
+                self.barLabels,
             )
+
+            # A dictionary containing all the chipType -> labels relations
+            self.labelsDict = {
+                'chips': self.chipLabels,
+                'testChips': self.testChipLabels,
+                'testCells': self.testCellLabels,
+                'bars': self.barLabels,
+            }
 
             # A dictionaries containing all the group -> labels relations
             
             self.groupToLabelsDict = _joinDictsOrNone(
                 waferBP.ChipBlueprints.retrieveGroupsDict(),
                 waferBP.TestChipBlueprints.retrieveGroupsDict(),
-                waferBP.TestCellBlueprints.retrieveGroupsDict()
+                waferBP.TestCellBlueprints.retrieveGroupsDict(),
+                waferBP.BarBlueprints.retrieveGroupsDict()
             )
 
             # dicts, None if not found
@@ -121,11 +152,80 @@ class _waferPlotter:
         if notch is None:
             self.notch = 2.7
 
-    def _chipGroupLabels(self, groups:list):
-        """Given the chip groups, it returns all the chip labels associated
-        to them.
+        
 
-        Elements of "groups" must be among self.allowedGroups.
+    def _plotLabels(self, chipTypes:list = None, groupsDict:list = None):
+        """This functions returns the component labels to be used for the
+        plot, filtered as specified by chipTypes and groupsDict.
+
+        chipTypes selects the macro-groups defined by chip types ("chips",
+        "testChips", "testCells" and "bars").
+
+        groupsDict is used to select given groups for each of the chip types,
+        and is in the form:
+        {
+            <chipType1>: <list of groups | None>,
+            <chipType2>: <list of groups | None>,
+        }
+
+        All the keys of groupsDict must be present in chipTypes. All their
+        values must be present in self.allowedGroupsDict[<chipType>]. If the
+        value is set to None, all the labels for that given chip type are
+        retrieved.
+
+        Args:
+            chipTypes (list[str], optional): The macro-groups for which to
+                retrieve labels. Defaults to None, in which case all the wafer
+                labels are returned.
+            groupsDict (list, optional): Dictionary that filters the retrieved
+                labels coording to the groups for the given chip-type
+                Defaults to None.
+
+        Returns:
+            list[str]: The labels to be used for the plot
+        """        
+
+        if chipTypes is None:
+            return self.allLabels
+                
+        # Type checks
+        allowedTypes = list(self.allowedGroupsDict.keys())
+        
+        if not isinstance(chipTypes, list):
+            raise TypeError(f'"chipTypes" must be a list of strings among {allowedTypes} or None.')
+        if not all([el in allowedTypes for el in chipTypes]):
+            raise TypeError(f'"chipTypes" must be a list of strings among {allowedTypes} or None.')
+
+        if groupsDict is not None:
+            if not all([key in allowedTypes for key in groupsDict]):
+                raise ValueError(f'The keys of "groupsDict" must be among {allowedTypes}.')
+            
+            if not all([key in chipTypes for key in groupsDict]):
+                raise ValueError(f'The keys of "groupsDict" must be among "chipTypes" ({chipTypes}).')
+
+            for ctype, groups in groupsDict.items():
+                if groups is not None:
+                    if not all([g in self.allowedGroupsDict[ctype] for g in groups]):
+                        raise TypeError(f'Values of "groupsDict" must correspond to those among self.allowedGroupsDict.')
+        
+        # Normalization
+        if groupsDict is None:
+            groupsDict = {ctype: None for ctype in chipTypes}
+        
+        plotLabels = []
+
+        for chipType, groups in groupsDict.items():
+            plotLabels += self._chipGroupLabels(chipType, groups)
+
+        return plotLabels
+    
+
+
+    def _chipGroupLabels(self, chipType:str, groups:list):
+        """Given the chip type and associated groups, it returns all the chip
+        labels associated to them.
+
+        Elements of "groups" must be among self.allowed[ChipType]Groups.
 
         Args:
             groups (list[str]): The chip groups.
@@ -138,33 +238,23 @@ class _waferPlotter:
             list[str]: The list of labels. Does NOT return None.
         """
 
-        log.debug(f'[_chipGroupLabels] groups: {groups}')
+        # Type checks are performed by _plotLabels()
 
+        # Early exit
         if groups is None:
-            log.debug(f'[_chipGroupLabels] Returning all labels: {self.allLabels}')
-            return self.allLabels
+            log.debug(f'[_chipGroupLabels] Returning all labels for chip type {chipType}: {self.labelsDict[chipType]}')
+            return self.labelsDict[chipType]
 
-        allowedGroupString = ', '.join([f'"{g}"' for g in self.allGroups])
-
-        if not isinstance(groups, list):
-                raise TypeError(f'"groups" must be a list of strings among {allowedGroupString}.')
-
-        log.debug(f'[_chipGroupLabels] allGroups: {self.allGroups}')
-        for el in groups:
-            log.debug(f'[_chipGroupLabels] group: {el}')
-            if not el in self.allGroups:
-                raise ValueError(f'"groups" must be a list of strings among {allowedGroupString}.')
-
+        
+        # Labels
         labels = []
         for group in groups:
-            log.debug(f'[_chipGroupLabels] group: "{group}"')
             newLabels = self.groupToLabelsDict[group]
-            log.debug(f'[_chipGroupLabels] newLabels: "{newLabels}"')
             labels += newLabels
         return labels
         
     
-    def _chipP1P2(self, chipLabel:str):
+    def _cmpP1P2(self, cmpLabel:str):
         """Returnes the p1-p2 pairs of points that identify chip rectangles on
         wafer.
 
@@ -179,21 +269,22 @@ class _waferPlotter:
                 coordinates in microns.
         """        
 
-        log.debug(f'[_chipP1P2] chipLabel: "{chipLabel}".')
+        # log.debug(f'[_chipP1P2] cmpLabel: "{cmpLabel}".')
 
-        if not chipLabel in self.allLabels:
-            raise ValueError(f'"chipLabel" ("{chipLabel}") is not valid.')
+        if not cmpLabel in self.allLabels:
+            raise ValueError(f'"chipLabel" ("{cmpLabel}") is not valid.')
         
-        p12 = self.allP1P2s[chipLabel] # um
+        p12 = self.allP1P2s[cmpLabel] # um
 
         p1 = list(map(lambda x: float(x)/1000, p12["p1"])) # um to mm
         p2 = list(map(lambda x: float(x)/1000, p12["p2"])) # um to mm
 
-        log.debug(f'[_chipP1P2] "{chipLabel}" p1: {p1} - p2: {p2}')
+        # log.debug(f'[_chipP1P2] "{cmpLabel}" p1: {p1} - p2: {p2}')
 
         return p1, p2
 
-    def _chipPatch(self, chipLabel:str, color = None):
+
+    def _cmpPatch(self, cmpLabel:str, color = None):
         """Returnes the (possibily colored) rectangle patch for a labeled chip.
 
         Args:
@@ -205,14 +296,14 @@ class _waferPlotter:
             mongoreader.patches.rectPatch: The patch for the rectangle.
         """        
 
-        log.debug(f'[_chipPatch] chipLabel: "{chipLabel}".')
+        # log.debug(f'[_chipPatch] chipLabel: "{chipLabel}".')
 
-        p1, p2 = self._chipP1P2(chipLabel)
+        p1, p2 = self._cmpP1P2(cmpLabel)
         
         return p.rectPatch(p1, p2, color)
 
-    
-    def _chipSubPatches(self, chipLabel:str, colors:list):
+
+    def _chipSubPatches(self, cmpLabel:str, colors:list):
         """Returns a list of rectangles (possibily colored) that fill the space
         of a chip on the wafer.
         
@@ -234,14 +325,14 @@ class _waferPlotter:
         Returns:
             list[mongoreader.patches.rectPatch]: The sub-patches.
         """        
-        p1, p2 = self._chipP1P2(chipLabel)
+        p1, p2 = self._cmpP1P2(cmpLabel)
         
         if not isinstance(colors, list):
             raise TypeError('"colors" must be a list, containing float 3-tuples, strings or None.')
 
         subSections = len(colors)
 
-        log.debug(f'[_chipSubPatches] {chipLabel}: {p1} - {p2}')
+        log.debug(f'[_chipSubPatches] {cmpLabel}: {p1} - {p2}')
         log.debug(f'[_chipSubPatches] subSections: {subSections}')
         log.debug(f'[_chipSubPatches] colors: {colors}')
         
@@ -249,7 +340,7 @@ class _waferPlotter:
         return rects
 
 
-    def _addChipLabelText(self, fig, ax, chipLabel:str, direction:str = None):
+    def _addCmpLabelText(self, fig, ax, cmpLabel:str, direction:str = None):
         """Adds a chip label as a text element to a figure, close to the chip
         patch.
 
@@ -271,7 +362,7 @@ class _waferPlotter:
             if not isinstance(direction, str):
                 raise TypeError('"direction" must be None or a string among "North", "East", "South", "West".')
 
-        p1, p2 = self._chipP1P2(chipLabel)
+        p1, p2 = self._cmpP1P2(cmpLabel)
         x0, x1, y0, y1, width, height = p._unpackP12(p1, p2)
 
         textx = x0+width/2
@@ -298,7 +389,7 @@ class _waferPlotter:
             else:
                 raise ValueError('"direction" is not among "North", "East", "South", "West".')
 
-        ax.text(textx, texty, chipLabel, fontsize = 10,
+        ax.text(textx, texty, cmpLabel, fontsize = 10,
             ha = ha,
             va = va)
 
@@ -309,7 +400,6 @@ class _waferPlotter:
             rangeMin, rangeMax,
             colormapName,
             *,
-            chipGroups:list = None,
             printBar:bool = True,
             barLabel:str = None,
             legendDict:dict = None,
@@ -318,10 +408,20 @@ class _waferPlotter:
             waferName:str = None,
             printDate:bool = True,
             printLabels:bool = True,
+            labelsToPrint:list = None,
             labelsDirection:str = None,
             dpi = None
             ):
         """This is the main function used to realize wafer-plots.
+
+        groupsDict is used to select given groups for each of the chip types,
+        and is in the form:
+        {
+            <chipType1>: <list of groups | None>,
+            <chipType2>: <list of groups | None>,
+            ...
+        }
+        If a value is set to None, all the groups are automatically retrieved.
 
         Args:
             patches (list): The list of patches that compose the plot
@@ -329,9 +429,8 @@ class _waferPlotter:
             rangeMax (float): The maximum range value for the data.
             colormapName (str, matplotlib colormap name): The name of the
                 colormap used for plotting the data.
-            chipGroups (list, optional): If passed, only the chips associated
-                to the passed groups are rendered. If not, all the chips are
-                rendered. Defaults to None.
+            
+        Keyword Args:
             printBar (bool, optional): If True, the lateral colorbar legend is
                 plotted. Defaults to True.
             barLabel (str, optional): The label associated to the colorbar.
@@ -347,6 +446,8 @@ class _waferPlotter:
                 generated is added at the bottom. Defaults to True.
             printLabels (bool, optional): If True, chip labels are added to the
                 plot. Defaults to True.
+            labelsToPrint (list[str], optional): The labels added to the plot
+                when printLabels is True.
             labelsDirection (str, optional): If passed, chip labels are shifted
                 to the side of the chips, depending on the actual value, which
                 must be among "North", "East", "South", "West". Defaults to
@@ -369,8 +470,12 @@ class _waferPlotter:
         
         # Chip labels:
         if printLabels:
-            for label in self._chipGroupLabels(chipGroups):
-                self._addChipLabelText(fig, ax, label, direction = labelsDirection)
+
+            if labelsToPrint is None:
+                log.warning('printLabels = True, but labelsToPrint is None.')
+            else:
+                for label in labelsToPrint:
+                    self._addCmpLabelText(fig, ax, label, direction = labelsDirection)
 
         # Wafer name
         if waferName is not None:
@@ -405,8 +510,8 @@ class _waferPlotter:
 
         return fig, ax
 
-
-    def _allChipSubpatches(self, dataDict:dict, *,
+    
+    def _allCmpSubpatches(self, dataDict:dict, *,
         dataType:str,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -418,7 +523,6 @@ class _waferPlotter:
         clippingHighColor = None,
         TrueColor = None,
         FalseColor = None,
-        chipGroups:list = None,
         ):
         """Given the data dictionary and dataType arguments, this method
         generates all the sub-patches of the chips to be included in the plot.
@@ -427,13 +531,16 @@ class _waferPlotter:
         values are associated to each chip. As such, the dataDict is expected
         to be in the form
         >>> {
-        >>>     <chipLabel1>: {<value1>, <value2>, ...},
-        >>>     <chipLabel2>: {<value1>, <value2>, ...},
+        >>>     <label1>: {<value1>, <value2>, ...},
+        >>>     <label2>: {<value1>, <value2>, ...},
         >>>     ...
         >>> }
+        where each label can refer to any type of chip.
 
         Args:
             dataDict (dict): The data dictionary.
+
+        Keyword Args:
             dataType (str): The kind of data in the dictionary (currently 
                 "float" or "string").
             dataRangeMin (float, optional): The minimum range value for the
@@ -455,9 +562,9 @@ class _waferPlotter:
                 above "dataRangeMax" will be rendered with this color,
                 otherwise the extreme color of the matplotlib colormap is used.
                 Defaults to None.
-            chipGroups (list, optional): If passed, only the chips associated
-                to the passed groups are rendered. If not, all the chips are
-                rendered. Defaults to None.
+            chipTypes (list[str], optional): If passed, only patches
+                correspondings to components in these macro-groups are plotted.
+                Defaults to ['chips'].
 
         Raises:
             NotImplementedError: If "bool" is passed as dataType.
@@ -481,10 +588,9 @@ class _waferPlotter:
             rangeMin, rangeMax = autoRangeDataDict(dataDict,
                     dataRangeMin, dataRangeMax)
 
-        plotLabels = self._chipGroupLabels(chipGroups)
 
         subchipPatches = []
-        for chipLabel in plotLabels:
+        for chipLabel in dataDict:
             if chipLabel in dataDict:
 
                 chipValues = list(dataDict[chipLabel].values())
@@ -548,7 +654,7 @@ class _waferPlotter:
         else:
             raise ValueError(f'Data type of dataDict could not be determined. Either mixed data types are present, or types other than the ones allowed (string, bool, float/int, None).')
 
-    def _allChipPatches(self, dataDict:dict, *,
+    def _allCmpPatches(self, dataDict:dict, *,
         dataType:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -574,6 +680,8 @@ class _waferPlotter:
 
         Args:
             dataDict (dict): The data dictionary,
+
+        Keyword Args:
             dataType (str, optional): The kind of data in the dictionary
                 (currently "float" or "string"). If None, the dataType is
                 autodetermined.
@@ -646,7 +754,7 @@ class _waferPlotter:
             chipColors, colorDict = c.boolsColor(chipValues, TrueColor, FalseColor,
                 NoneColor, wrongDataTypeColor)
 
-        chipPatches = [self._chipPatch(lab, col)
+        chipPatches = [self._cmpPatch(lab, col)
                     for lab, col in zip (chipLabels, chipColors)]
 
         return chipPatches, rangeMin, rangeMax, colorDict
@@ -655,6 +763,8 @@ class _waferPlotter:
 
     def plotData_chipScale(self, dataDict:dict, title:str = None, *, 
         dataType:str = None,
+        chipTypes:str = None,
+        chipGroupsDict:dict = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = None,
@@ -665,7 +775,6 @@ class _waferPlotter:
         TrueColor = None,
         FalseColor = None,
         BackColor = 'White',
-        chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None,
@@ -693,14 +802,34 @@ class _waferPlotter:
         dictionary, the chip is rendered as and empty chip (and BackColor is
         used).
         
-        dataType currently must be passed (the method does not recognize
-        automatically the data type) and allowed values are "float" and
-        "string". Use "float" for integer values.
+        "chipTypes" and "chipGroupsDict" can be used to filter which data is to
+        be plotted.
+
+        chipTypes is a list of strings among "chips", "testChips", "bars" and
+        "testCells", which selects which macro-groups are to be plotted.
+
+        chipGroupsDict is a dictionary in the form
+        {
+            <chipType1>: [<group1>, <group2>, ...] | None,
+            <chipType2>: [<group1>, <group2>, ...] | None,
+            ...
+        }
+        which, for each <chipType>, selects which groups are to be plotted.
+        If a value of chipGroupsDict is set to None, all the groups are
+        automatically retrieved for that chipType.
 
         Args:
             dataDict (dict): The data dictionary.
-            dataType (str): The kind of data in the dictionary (currently 
-                "float", "string" or "bool").
+        
+        Keyword Args:
+            dataType (str, optional): The kind of data in the dictionary
+                (currently "float", "string" or "bool"). Defaults to None, in
+                which case the type is automatically determined.
+            chipTypes (list[str], optional): If passed, only components of a
+                given type will be plotted. Defaults to None.
+            chipGroupsDict (dict, optional): If passed, determines which groups
+                are to be plotted. If not, all the chips are rendered. The
+                structure is described above. Defaults to None.
             title (str, optional): The title string that is put at the top of
                 the plot. Defaults to None.
             dataRangeMin (float, optional): The minimum range value for the
@@ -731,10 +860,6 @@ class _waferPlotter:
                 that are not present in the data dictionary (relevant when the
                 chip groups selected contain chips that are not included in the 
                 data dictionary). Defaults to 'White'.
-            chipGroups (list, optional): If passed, only the chips associated
-                to the passed groups are rendered. If None is passed, all the
-                chips are rendered (if an empty list is passed, nothing is
-                rendered). Defaults to None.
             waferName (str, optional): If passed, it appears at the bottom of
                 the wafer frame, under the notch. Defaults to None.
             colormapName (str, matplotlib colormap name): The name of the
@@ -762,19 +887,29 @@ class _waferPlotter:
         if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
         if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)
 
-         # Generating patches
-        plotLabels = self._chipGroupLabels(chipGroups)
-        backChipPatches = [self._chipPatch(l, BackColor) for l in plotLabels
-                if l not in dataDict]
-
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
         if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
 
+        # Filtering dataDict
+
+        if chipTypes is not None:
+            plotLabels = self._plotLabels(chipTypes, chipGroupsDict)
+            dataDict = {k: v for k, v in dataDict.items() if k in plotLabels}
+
+            backChipPatches = [self._chipPatch(l, BackColor) for l in plotLabels
+                if l not in dataDict]
+        else:
+            backChipPatches = []
+
+        # Type determination
+        
         if dataType is None:
             dataType = self._determineDataType(dataDict)
 
+        # Building up patches
+
         chipPatches, rangeMin, rangeMax, colorDict = \
-            self._allChipPatches(dataDict, dataType = dataType,
+            self._allCmpPatches(dataDict, dataType = dataType,
                 dataRangeMin = dataRangeMin,
                 dataRangeMax = dataRangeMax,
                 colormapName = colormapName,
@@ -792,6 +927,14 @@ class _waferPlotter:
 
         # Plot settings
             
+        if printChipLabels:
+            if chipTypes is not None:
+                labelsToPrint = plotLabels
+            else:
+                labelsToPrint = list(dataDict.keys())
+        else:
+            labelsToPrint = None
+
         legendDict = {'Data n/a': NoneColor, 'Wrong data type': wrongDataTypeColor}
         if clippingLowColor is not None:
             legendDict['Under-range'] = clippingLowColor
@@ -823,17 +966,18 @@ class _waferPlotter:
             barLabel = colorbarLabel,
             colormapName = colormapName,
             printLabels = printChipLabels,
+            labelsToPrint = labelsToPrint,
             labelsDirection = chipLabelsDirection,
             dpi = dpi,
-            chipGroups = chipGroups
             )
 
         return fig, ax
-        # print(f'DEBUG: {rangeMin}')
-        # print(f'DEBUG: {rangeMax}')
+
 
     def plotData_subchipScale(self, dataDict, title:str = None, *,
         dataType:str = None,
+        chipTypes:str = None,
+        chipGroupsDict:dict = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
         NoneColor = None,
@@ -844,7 +988,6 @@ class _waferPlotter:
         TrueColor = None,
         FalseColor = None,
         BackColor = 'White',
-        chipGroups:list = None,
         waferName:str = None,
         colormapName:str = None,
         colorbarLabel:str = None,
@@ -888,14 +1031,33 @@ class _waferPlotter:
         shows the outer boundary of the chip; pass a dictionary with None
         values to show that data is missing.
         
-        dataType currently must be passed (the method does not recognize
-        automatically the data type) and allowed values are "float" and
-        "string". Use "float" for integer values.
+        "chipTypes" and "chipGroupsDict" can be used to filter which data is to
+        be plotted.
+
+        chipTypes is a list of strings among "chips", "testChips", "bars" and
+        "testCells", which selects which macro-groups are to be plotted.
+
+        chipGroupsDict is a dictionary in the form
+        {
+            <chipType1>: [<group1>, <group2>, ...] | None,
+            <chipType2>: [<group1>, <group2>, ...] | None,
+            ...
+        }
+        which, for each <chipType>, selects which groups are to be plotted.
+        If a value of chipGroupsDict is set to None, all the groups are
+        automatically retrieved for that chipType.
         
         Args:
             dataDict (dict): The data dictionary.
+
+        Keyword Args:
             dataType (str): The kind of data in the dictionary (currently 
                 "float" or "string").
+            chipTypes (list[str], optional): If passed, only components of a
+                given type will be plotted. Defaults to None.
+            chipGroupsDict (dict, optional): If passed, determines which groups
+                are to be plotted. If not, all the chips are rendered. The
+                structure is described above. Defaults to None.
             dataRangeMin (float, optional): The minimum range value for the
                 data. Defaults to None.
             dataRangeMax (float, optional): The maximum range value for the
@@ -924,10 +1086,6 @@ class _waferPlotter:
                 that are not present in the data dictionary (relevant when the
                 chip groups selected contain chips that are not included in the 
                 data dictionary). Defaults to 'White'.
-            chipGroups (list, optional): If passed, only the chips associated
-                to the passed groups are rendered. If None is passed, all the
-                chips are rendered (if an empty list is passed, nothing is
-                rendered). Defaults to None.
             waferName (str, optional): If passed, it appears at the bottom of
                 the wafer frame, under the notch. Defaults to None.
             colormapName (str, matplotlib colormap name): The name of the
@@ -956,18 +1114,27 @@ class _waferPlotter:
         if isinstance(dataRangeMax, int): dataRangeMax = float(dataRangeMax)
         if isinstance(dataRangeMin, int): dataRangeMin = float(dataRangeMin)
 
-        # Generating patches
-        plotLabels = self._chipGroupLabels(chipGroups)
-        chipPatches = [self._chipPatch(l, BackColor) for l in plotLabels]
-
         if NoneColor is None: NoneColor = c.DEFAULT_NONE_COLOR
         if wrongDataTypeColor is None: wrongDataTypeColor = c.DEFAULT_WRONGDATATYPE_COLOR
+
+        # Filtering dataDict
+
+        if chipTypes is not None:
+            plotLabels = self._plotLabels(chipTypes, chipGroupsDict)
+            dataDict = {k: v for k, v in dataDict.items() if k in plotLabels}
+
+            backChipPatches = [self._chipPatch(l, BackColor) for l in plotLabels
+                if l not in dataDict]
+        else:
+            backChipPatches = []
+
+        # Type determination
 
         if dataType is None:
             dataType = self._determineDataType(dataDict)
 
         subchipPatches, rangeMin, rangeMax, colorDict = \
-            self._allChipSubpatches(dataDict,
+            self._allCmpSubpatches(dataDict,
                 dataType = dataType,
                 dataRangeMin = dataRangeMin, dataRangeMax = dataRangeMax,
                 colormapName = colormapName,
@@ -976,15 +1143,22 @@ class _waferPlotter:
                 wrongDataTypeColor = wrongDataTypeColor,
                 clippingLowColor = clippingLowColor,
                 clippingHighColor = clippingHighColor,
-                chipGroups = chipGroups,
                 TrueColor = TrueColor,
                 FalseColor = FalseColor)
 
         allPatches = [p.waferPatch(self.D, self.notch)]
-        allPatches += chipPatches
+        allPatches += backChipPatches
         allPatches += subchipPatches
 
         # Plot settings
+
+        if printChipLabels:
+            if chipTypes is not None:
+                labelsToPrint = plotLabels
+            else:
+                labelsToPrint = list(dataDict.keys())
+        else:
+            labelsToPrint = None
 
         legendDict = {'Data n/a': NoneColor}
         if clippingLowColor is not None:
@@ -1014,12 +1188,12 @@ class _waferPlotter:
         fig, ax=self._plot(allPatches, rangeMin, rangeMax,
             colormapName,
             title = title,
-            chipGroups = chipGroups,
             waferName = waferName,
             legendDict=legendDict,
             printBar = printBar,
             barLabel = colorbarLabel,
             printLabels = printChipLabels,
+            labelsToPrint = labelsToPrint,
             labelsDirection = chipLabelsDirection,
             dpi = dpi
             )

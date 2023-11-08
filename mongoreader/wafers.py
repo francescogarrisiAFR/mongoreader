@@ -113,7 +113,15 @@ class waferCollation(c.collation):
                 self.testCellBPdict
             )
 
-            
+            # Dictionary containing all the chipType -> allowed groups relations
+            self._allowedGroupsDict = {
+                'chips': self.waferBlueprint.ChipBlueprints.retrieveGroupNames(),
+                'testChips': self.waferBlueprint.TestChipBlueprints.retrieveGroupNames(),
+                'testCells': self.waferBlueprint.TestCellBlueprints.retrieveGroupNames(),
+                'bars': self.waferBlueprint.BarBlueprints.retrieveGroupNames(),
+            }
+
+
             # Collecting chips, testChips and bars
             self.chips, self.chipsDict, \
             self.testChips, self.testChipsDict, \
@@ -350,7 +358,7 @@ class waferCollation(c.collation):
 
     def _componentsFromType(self, chipTypes:list):
 
-        if not isinstance(chipTypes):
+        if not isinstance(chipTypes, list):
             raise TypeError('"chipTypes" must be a list of strings.')
         if not all([isinstance(el, str) for el in chipTypes]):
             raise TypeError('"chipTypes" must be a list of strings.')
@@ -374,6 +382,24 @@ class waferCollation(c.collation):
 
         return cmpsToReturn
         
+    def _waferBlueprintAttributeClassFromType(self, chipType:str):
+
+        if not isinstance(chipType, str):
+            raise TypeError(f'"chipTypes" must be a string.')
+        
+        if not chipType in self._allowedChipTypes:
+            raise ValueError(f'"chipType" must be among {self._allowedChipTypes}')
+
+        if chipType == "chips":
+            return self.waferBlueprint.ChipBlueprints
+        elif chipType == "testChips":
+            return self.waferBlueprint.TestChipBlueprints
+        elif chipType == "testCells":
+            return self.waferBlueprint.TestCellBlueprints
+        elif chipType == "bars":
+            return self.waferBlueprint.BarBlueprints
+        
+
 
     # ---------------------------------------------------
 
@@ -454,7 +480,7 @@ class waferCollation(c.collation):
     def retrieveData(self,
         resultName_orNames,
         chipType_orTypes,
-        chipGroup_orGroups = None,
+        chipGroupsDict:dict = None,
         locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
         requiredStatus_orList = None,
@@ -471,12 +497,14 @@ class waferCollation(c.collation):
                 strings or a list of them to select which wafer components are
                 considered: "chips", "testChips", "bars", "testCells".
                 Defaults to "chips".
-            chipGroup_orGroups (str | List[str], optional): The group or groups
-                of chips that need to be considered. If the same group is
-                defined for, e.g., chips and test chips, all these chips will be
-                considered (if "chip" and "testChips" are both listed in
-                "chipType_orTypes").
-                Defaults to None, in which case all groups are considered.
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all <chipType1> must be present within the dictionary.
 
         For each chip, results are collected using the function 
         "scoopComponentResults" (defined in mongoreader/goggleFunctions.py).
@@ -497,17 +525,18 @@ class waferCollation(c.collation):
         if not all([el in ['chips', 'testChips', 'bars', 'testCells'] for el in chipTypes]):
             raise ValueError('Allowed values for "chipType_orTypes" are "chips", "testChips", "bars", "testCells".')
 
-        if chipGroup_orGroups is None:
-            chipGroups = None
-        else:
-            if isinstance(chipGroup_orGroups, list):
-                chipGroups = chipGroup_orGroups
-            else:
-                chipGroups = [chipGroup_orGroups]
+        
+        if chipGroupsDict is not None:
+            
+            if not all([key in chipTypes for key in chipGroupsDict]):
+                raise ValueError(f'The keys of "groupsDict" must be among "chipTypes" ({chipTypes}).')
 
-            for el in chipGroups:
-                if not isinstance(el, str):
-                    raise TypeError('"chipGroup_orGroups" must be a string, a list of strings or None.')
+            for ctype, groups in chipGroupsDict.items():
+                if groups is not None:
+                    if not all([g in self._allowedGroupsDict[ctype] for g in groups]):
+                        raise TypeError(f'Values of "groupsDict" must correspond to those among self.allowedGroupsDict.')
+
+
         
         if locationGroup_orGroups is None:
             locationGroups = None
@@ -521,76 +550,29 @@ class waferCollation(c.collation):
                 if not isinstance(el, str):
                     raise TypeError('"locationGroup_orGroups" must be a string, a list of strings or None.')
                 
+
+        chipSerials = []        
         
-        
-        # If chipGroup_orGroups is None, I collect all groups
+        if chipGroupsDict is None:
+            chipGroupsDict = {chipType: None for chipType in chipTypes}
 
-        # Collecting all relevant serials (labels)
-        chipSerials = []
-        for chipType in chipTypes:
+        for chipType, chipGroups in chipGroupsDict.items():
 
-            if chipType == 'chips':
-                
-                chipTypeGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
+            attributeClass = self._waferBlueprintAttributeClassFromType(chipType)
 
-                if chipGroups is None:
-                    groupsToScoop = chipTypeGroups
-                else:
-                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
+            if chipGroups is None:
+                newLabels = attributeClass.retrieveLabels()
 
-                for group in groupsToScoop:
-                    mom.log.debug(f'chipType-group: {chipType}-{group}')
+            else:
+                newLabels = []
+                for group in chipGroups:
+                    newLabels += attributeClass.retrieveGroupLabels(group)
 
-                    newSerials = self.waferBlueprint.ChipBlueprints.retrieveGroupLabels(group)
-                    if newSerials is not None: chipSerials += newSerials
+            chipSerials += newLabels
 
-            if chipType == 'testChips':
-                
-                chipTypeGroups = self.waferBlueprint.TestChipBlueprints.retrieveGroupNames()
-
-                if chipGroups is None:
-                    groupsToScoop = chipTypeGroups
-                else:
-                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
-                
-                for group in groupsToScoop:
-                    mom.log.debug(f'chipType-group: {chipType}-{group}')
-
-                    newSerials = self.waferBlueprint.TestChipBlueprints.retrieveGroupLabels(group)
-                    if newSerials is not None: chipSerials += newSerials
-            
-            if chipType == 'bars':
-                
-                chipTypeGroups = self.waferBlueprint.BarBlueprints.retrieveGroupNames()
-
-                if chipGroups is None:
-                    groupsToScoop = chipTypeGroups
-                else:
-                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
-
-                for group in groupsToScoop:
-                    mom.log.debug(f'chipType-group: {chipType}-{group}')
-
-                    newSerials = self.waferBlueprint.BarBlueprints.retrieveGroupLabels(group)
-                    if newSerials is not None: chipSerials += newSerials
-            
-            if chipType == 'testCells':
-                
-                chipTypeGroups = self.waferBlueprint.TestCellBlueprints.retrieveGroupNames()
-
-                if chipGroups is None:
-                    groupsToScoop = chipTypeGroups
-                else:
-                    groupsToScoop = [g for g in chipTypeGroups if g in chipGroups]
-                
-                for group in groupsToScoop:
-                    mom.log.debug(f'chipType-group: {chipType}-{group}')
-
-                    newSerials = self.waferBlueprint.TestCellBlueprints.retrieveGroupLabels(group)
-                    if newSerials is not None: chipSerials += newSerials
 
         if chipSerials == []:
-            mom.log.warning(f'No labels associated to groups {chipGroups}')
+            mom.log.warning(f'No chip serials have been determined!')
         
         locationDict = {}
         for serial in chipSerials:
@@ -640,7 +622,7 @@ class waferCollation(c.collation):
     def retrieveAveragedData(self,
         resultName_orNames,
         chipType_orTypes,
-        chipGroup_orGroups = None,
+        chipGroupsDict:dict = None,
         locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
         requiredStatus_orList = None,
@@ -652,7 +634,7 @@ class waferCollation(c.collation):
 
         dataDict_subchip = self.retrieveData(resultName_orNames,
             chipType_orTypes,
-            chipGroup_orGroups,
+            chipGroupsDict,
             locationGroup_orGroups,
             searchDatasheetData,
             requiredStatus_orList,
@@ -665,107 +647,101 @@ class waferCollation(c.collation):
         return dataDict
         
 
+    def plotField(self,
+                  field_or_chain,
+                  chipTypes:list = None,
+                  dataType:str = None,
+                  colorDict:dict = None,
+                  title:str = None):
+        """Plots a given field for all the chips specified by chipTypes.
 
-    def _plotStringField(self, chips, field_or_chain:str,
-            groups:list = None,
-            what:str = None,
-            colorDict = None,
-            title = None):
-        """Retrieve a given field from all "chips" and generates a plot."""
+        Args:
+            field_or_chain (str | list[str|int]): The chain of keys/indexes that
+                identifies the dictionary element to plot
+            chipTypes (list[str], optional): The types of chips considered for
+                the plots. Elements must be among "chips", "testChips", "bars"
+                and "testCells". Defaults to ["chips"].
+            dataType (str, optional): If passed, the plot will assume that data
+                is either of that type or None, and will mark different data
+                as not valid. Must be among "float", "string" and "bool".
+                Defaults to None, in which case the function attempts to
+                determine automatically the type.
+            colorDict (dict, optional): The custom color dictionary used for
+                string-type data. Defaults to None.
+            title (str, optional): The title of the plot. Defaults to None.
+        """        
 
-        if chips is None:
-            if what is not None:
-                log.warning(f'{what}s is None. Cannot plot.')
-                return
+        if chipTypes is None:
+            chipTypes = ['chips']
 
-        dataDict = {chip['_waferLabel']: chip.getField(field_or_chain, verbose = False)
-            for chip in chips}
+        cmps = self._componentsFromType(chipTypes)
 
-        self.wplt.plotData_chipScale(dataDict, dataType = 'string',
-            title = title,
-            colormapName='rainbow',
-            waferName = self.wafer.name,
-            printChipLabels = True,
-            colorDict=colorDict,
-            chipGroups=groups,
+        dataDict = {cmp['_waferLabel']: cmp.getField(field_or_chain, verbose = False)
+            for cmp in cmps}
+        
+        return self.wplt.plotData_chipScale(
+                    dataDict,
+                    dataType = dataType,
+                    chipTypes = chipTypes,
+                    title = title,
+                    colormapName='rainbow',
+                    waferName = self.wafer.name,
+                    printChipLabels = True,
+                    colorDict=colorDict,
             )
 
+    def plotStatus(self,
+                chipTypes:list = None,
+                colorDict:dict = None,
+                title:str = 'Status'):
+        """Plots the status of all the chips specified by chipTypes.
 
-    def plotStringField_allChips(self, field_or_chain:str, colorDict = None, title = None):
-        """Plots a given stringField for all the chips (normal and test chips)."""
-        if title is None: title = f'Field "{field_or_chain}"'
-        self._plotStringField(self.allChips, field_or_chain,
-            groups = self.wplt.allChipGroups,
-            what = 'allChip', colorDict = colorDict,
-            title = title)
+        Args:
+            chipTypes (list[str], optional): The types of chips considered for
+                the plots. Elements must be among "chips", "testChips", "bars"
+                and "testCells". Defaults to ["chips"].
+            colorDict (dict, optional): The custom color dictionary used for
+                string-type data. Defaults to None.
+            title (str, optional): The title of the plot. Defaults to None.
+        """
 
-    def plotStringField_chips(self, field_or_chain:str, colorDict = None, title = None):
-        """Plots a given stringField for the chips (normal chips only)."""
-        if title is None: title = f'Field "{field_or_chain}"'
-        self._plotStringField(self.chips, field_or_chain,
-            groups = self.wplt.allowedChipGroups,
-            what = 'chip', colorDict = colorDict,
-            title = title)
+        return self.plotField(
+                'status',
+                chipTypes = chipTypes,
+                dataType = 'string',
+                colorDict = colorDict,
+                title = title)
+    
+    def plotProcessStage(self,
+                chipTypes:list = None,
+                colorDict:dict = None,
+                title:str = 'Process Stage'):
+        """Plots the process stage of all the chips specified by chipTypes.
 
-    def plotStringField_testChips(self, field_or_chain:str, colorDict = None, title = None):
-        if title is None: title = f'Field "{field_or_chain}"'
-        """Plots a given stringField for all the test chips."""
+        Args:
+            chipTypes (list[str], optional): The types of chips considered for
+                the plots. Elements must be among "chips", "testChips", "bars"
+                and "testCells". Defaults to ["chips"].
+            colorDict (dict, optional): The custom color dictionary used for
+                string-type data. Defaults to None.
+            title (str, optional): The title of the plot. Defaults to None.
+        """
 
-        self._plotStringField(self.testChips, field_or_chain,
-            groups = self.wplt.allowedTestChipGroups,
-            what = 'testChips', colorDict = colorDict,
-            title = title)
-
-    def plotStringField_testCells(self, field_or_chain:str, colorDict = None, title = None):
-        """Plots a given stringField for all the test cells."""
-
-        if title is None: title = f'Field "{field_or_chain}"'
-        self._plotStringField(self.testCells, field_or_chain,
-            groups = self.wplt.allowedTestCellpGroups,
-            what = 'testCells', colorDict = colorDict,
-            title = title)
-
-
-    def plotStatus_allChips(self, colorDict = None):
-        """Plots the field "status" for all the chips (normal and test chips)."""
-        self.plotStringField_allChips('status', colorDict = colorDict, title = 'Chip status')
-
-    def plotStatus_chips(self, colorDict = None):
-        """Plots the field "status" for the chips (normal chips only)."""
-        self.plotStringField_chips('status', colorDict = colorDict, title = 'Chip status')
-
-    def plotStatus_testChips(self, colorDict = None):
-        """Plots the field "status" for the test chips."""
-        self.plotStringField_testChips('status', colorDict = colorDict, title = 'Chip status')
-
-    def plotStatus_testCells(self, colorDict = None):
-        """Plots the field "status" for the test cells."""
-        self.plotStringField_testCells('status', colorDict = colorDict, title = 'Chip status')
+        return self.plotField(
+                'processStage',
+                chipTypes = chipTypes,
+                dataType = 'string',
+                colorDict = colorDict,
+                title = title)
+    
 
 
-    def plotProcessStage_allChips(self, colorDict = None):
-        """Plots the field "processStage" for all the chips (normal and test chips)."""
-        self.plotStringField_allChips('processStage', colorDict = colorDict, title = 'Process Stage')
-
-    def plotProcessStage_chips(self, colorDict = None):
-        """Plots the field "processStage" for the chips (normal chips only)."""
-        self.plotStringField_chips('processStage', colorDict = colorDict, title = 'Process Stage')
-
-    def plotProcessStage_testChips(self, colorDict = None):
-        """Plots the field "processStage" for the test chips."""
-        self.plotStringField_testChips('processStage', colorDict = colorDict, title = 'Process Stage')
-
-    def plotProcessStage_testCells(self, colorDict = None):
-        """Plots the field "processStage" for the test cells."""
-        self.plotStringField_testCells('processStage', colorDict = colorDict, title = 'Process Stage')
-
-
-    def plotResults(self,
+    def plotTestResults(self,
         resultName:str,
         locationGroup:str,
         chipType_orTypes = None,
-        chipGroup_orGroups = None,
         *,
+        chipGroupsDict:dict = None,
         colormapName:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -776,6 +752,7 @@ class waferCollation(c.collation):
         colorbarLabel:str = None,
         printChipLabels:bool = False,
         chipLabelsDirection:str = None,
+        title:str = None,
         dpi = None,
         **kwargs
         ):
@@ -791,15 +768,17 @@ class waferCollation(c.collation):
                 strings or a list of them to select which wafer components are
                 considered: "chips", "testChips", "bars", "testCells".
                 Defaults to "chips".
-            chipGroup_orGroups (str | List[str], optional): The group or groups
-                of chips that need to be considered. If the same group is
-                defined for, e.g., chips and test chips, all these chips will be
-                considered (if "chip" and "testChips" are both listed in
-                "chipType_orTypes").
-                Defaults to None, in which case all groups are considered.
             
 
         Keyword arguments (**kwargs):
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all <chipType1> must be present within the dictionary.
             searchDatasheetReady (bool, optional): If True, only results that
                 have the field "datasheetReady" set to True are scooped.
                 If "datasheetReady" is False or missing, the result is ignored.
@@ -819,27 +798,28 @@ class waferCollation(c.collation):
         plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
     
         if chipType_orTypes is None:
-            chipType_orTypes == 'chips'
+            chipTypes = ['chips']
+        elif not isinstance(chipType_orTypes, list):
+            chipTypes = [chipType_orTypes]
+        else:
+            chipTypes = chipType_orTypes
 
-            if chipGroup_orGroups is None:
-                chipGroup_orGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
-        
+        log.debug(f'[plotResults] chipTypes: {chipTypes}')
 
         dataDict = self.retrieveData(
             resultName,
-            chipType_orTypes,
-            chipGroup_orGroups,
+            chipTypes,
+            chipGroupsDict,
             locationGroup,
             **kwargs
         )
         
-        if isinstance(chipGroup_orGroups, str):
-            chipGroups = [chipGroup_orGroups]
-        else:
-            chipGroups = chipGroup_orGroups
+        if title is None: title = resultName
 
         plt.plotData_subchipScale(dataDict,
-            title = resultName,
+            chipTypes = chipTypes,
+            chipGroupsDict = chipGroupsDict,
+            title = title,
             NoneColor = NoneColor,
             colormapName=colormapName,
             dataRangeMin = dataRangeMin,
@@ -848,7 +828,6 @@ class waferCollation(c.collation):
             clippingLowColor = clippingLowColor,
             BackColor = BackColor,
             waferName = self.wafer.name,
-            chipGroups = chipGroups,
             colorbarLabel = colorbarLabel,
             printChipLabels = printChipLabels,
             chipLabelsDirection = chipLabelsDirection,
@@ -858,12 +837,12 @@ class waferCollation(c.collation):
         return dataDict
 
 
-    def plotAveragedResults(self,
+    def plotAveragedTestResults(self,
         resultName:str,
         locationGroup:str,
         chipType_orTypes = None,
-        chipGroup_orGroups = None,
         *,
+        chipGroupsDict:dict = None,
         colormapName:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -874,6 +853,7 @@ class waferCollation(c.collation):
         colorbarLabel:str = None,
         printChipLabels:bool = True,
         chipLabelsDirection:str = None,
+        title:str = None,
         dpi = None,
         **kwargs):
         """Works like plotResults, but data is first averaged to a chip-scale
@@ -882,27 +862,27 @@ class waferCollation(c.collation):
         plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
     
         if chipType_orTypes is None:
-            chipType_orTypes == 'chips'
+            chipTypes = ['chips']
+        elif not isinstance(chipType_orTypes, list):
+            chipTypes = [chipType_orTypes]
+        else:
+            chipTypes = chipType_orTypes
 
-            if chipGroup_orGroups is None:
-                chipGroup_orGroups = self.waferBlueprint.ChipBlueprints.retrieveGroupNames()
-        
 
         dataDict = self.retrieveAveragedData(
             resultName,
             chipType_orTypes,
-            chipGroup_orGroups,
+            chipGroupsDict,
             locationGroup,
             **kwargs
         )
-        
-        if isinstance(chipGroup_orGroups, str):
-            chipGroups = [chipGroup_orGroups]
-        else:
-            chipGroups = chipGroup_orGroups
+
+        if title is None: title = resultName + ' (Averaged)'
 
         plt.plotData_chipScale(dataDict,
-            title = resultName + ' (Averaged)',
+            title = title,
+            chipTypes = chipTypes,
+            chipGroupsDict = chipGroupsDict,
             NoneColor = NoneColor,
             colormapName=colormapName,
             dataRangeMin = dataRangeMin,
@@ -911,7 +891,6 @@ class waferCollation(c.collation):
             clippingLowColor = clippingLowColor,
             BackColor = BackColor,
             waferName = self.wafer.name,
-            chipGroups = chipGroups,
             colorbarLabel = colorbarLabel,
             printChipLabels = printChipLabels,
             chipLabelsDirection = chipLabelsDirection,
