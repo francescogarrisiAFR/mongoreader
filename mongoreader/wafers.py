@@ -477,7 +477,7 @@ class waferCollation(c.collation):
         return allNames
 
 
-    def retrieveData(self,
+    def retrieveTestData(self,
         resultName_orNames,
         chipType_orTypes,
         chipGroupsDict:dict = None,
@@ -619,7 +619,7 @@ class waferCollation(c.collation):
             return returnDict
 
 
-    def retrieveAveragedData(self,
+    def retrieveAveragedTestData(self,
         resultName_orNames,
         chipType_orTypes,
         chipGroupsDict:dict = None,
@@ -629,10 +629,10 @@ class waferCollation(c.collation):
         requiredProcessStage_orList = None,
         requiredTags:list = None,
         tagsToExclude:list = None) -> dict:
-        """Works like .retrieveData, but values are averaged to the chip-scale
+        """Works like .retrieveTestData, but values are averaged to the chip-scale
             level."""
 
-        dataDict_subchip = self.retrieveData(resultName_orNames,
+        dataDict_subchip = self.retrieveTestData(resultName_orNames,
             chipType_orTypes,
             chipGroupsDict,
             locationGroup_orGroups,
@@ -806,7 +806,7 @@ class waferCollation(c.collation):
 
         log.debug(f'[plotResults] chipTypes: {chipTypes}')
 
-        dataDict = self.retrieveData(
+        dataDict = self.retrieveTestData(
             resultName,
             chipTypes,
             chipGroupsDict,
@@ -869,7 +869,7 @@ class waferCollation(c.collation):
             chipTypes = chipType_orTypes
 
 
-        dataDict = self.retrieveAveragedData(
+        dataDict = self.retrieveAveragedTestData(
             resultName,
             chipType_orTypes,
             chipGroupsDict,
