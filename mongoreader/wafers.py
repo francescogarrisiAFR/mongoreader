@@ -16,7 +16,361 @@ from numpy import average
 chipGoggles = gf.chipGoggleFunctions()
 
 
+class _attributeClass:
+    def __init__(self, obj):
+        self._obj = obj
 
+    @classmethod
+    def _attributeName(cls):
+        return cls.__name__.lstrip('_')
+
+def _attributeClassDecoratorMaker(attributeClass):
+
+    assert issubclass(attributeClass, _attributeClass), '[_classAttributeDecorator] Not an _attributeClass.'
+
+    def decorator(objClass):
+
+        oldInit = getattr(objClass, '__init__')
+
+        def newInit(self, *args, **kwargs):
+            oldInit(self, *args, **kwargs)
+            setattr(self, attributeClass._attributeName(), attributeClass(self))
+
+        setattr(objClass, '__init__', newInit)
+        
+        return objClass
+
+    return decorator
+
+class _Datasheet(_attributeClass):
+    """Attribute class to apply Datasheet methods to wafer collations"""
+    
+    def printHelpInfo(self):
+        pass
+
+
+    def retrieveData(self,
+                    resultName:str,
+                    locationGroup:str,
+                    requiredTags:list = None,
+                    tagsToExclude:list = None,
+                    chipType_orTypes = None,
+                    chipGroupsDict:dict = None,
+                    *,
+                    datasheetIndex:int = None
+                ):
+        
+
+        if chipType_orTypes is None:
+            chipTypes = ['chips']
+        else:
+            chipTypes = [chipType_orTypes] if not isinstance(chipType_orTypes, list) else chipType_orTypes
+        
+        cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
+        
+
+
+        # Scooping results
+
+        dataDict = {}
+
+        for label in cmpLabels:
+            cmp = self._obj._allComponentsDict[label]
+
+            # Retrieving all possible locations and defining sub-dict
+            bp = self._obj._allComponentBPdict[label]
+            locations = bp.Locations.retrieveGroupElements(locationGroup)
+            subDataDict = {loc: None for loc in locations}
+
+            # Scooping results from datasheet
+            scoopedResults = cmp.Datasheet.scoopResults(
+                        resultName,
+                        requiredTags,
+                        tagsToExclude,
+                        locations = locations,
+                        datasheetIndex = datasheetIndex,
+                        verbose = False
+                    )
+            
+            if scoopedResults is None: # Early exit
+                dataDict[label] = subDataDict
+                continue
+
+            # Collecting the results in the sub-dict
+
+            for resDict in scoopedResults:
+
+                # resDict = {
+                #     "resultName": "IL",
+                #     "location": "MZ-X",
+                #     "requiredTags": [
+                #         "1550nm",
+                #         "25C"
+                #     ],
+                #     "tagsToExclude": null,
+                #     "resultData": {
+                #         "value": 13.908280000000003,
+                #         "error": 0.4,
+                #         "unit": "dB"
+                #     },
+                #     "testReportID": "6545f5752687e9d6549ec0b6"
+                # }
+
+                loc = resDict.get('location')
+                if loc is None:
+                    log.warning('A location for a scooped result is None. Skipped.')
+                    continue
+
+                resValue = resDict.get('resultData')
+                if resValue is not None:
+                    resValue = resValue.get('value')
+                
+                if resValue is None:
+                    log.warning('A result value for a scooped result is None. Skipped.')
+                    continue
+
+                if subDataDict[loc] is not None:
+                    log.warning(f'Multiple results for component "{cmp.name}" - location "{loc}"')
+                
+                subDataDict[loc] = resValue
+        
+            dataDict[label] = subDataDict
+
+        # Returning dataDictinoary
+        return dataDict
+
+    def retrieveAveragedData(self,
+            resultName:str,
+            locationGroup:str,
+            requiredTags:list = None,
+            tagsToExclude:list = None,
+            chipType_orTypes = None,
+            chipGroupsDict:dict = None,
+            *,
+            datasheetIndex:int = None):
+        
+        dd = self.retrieveData(
+                    resultName,
+                    locationGroup,
+                    requiredTags,
+                    tagsToExclude,
+                    chipType_orTypes,
+                    chipGroupsDict,
+                    datasheetIndex = datasheetIndex)
+
+        return averageSubchipScaleDataDict(dd)
+
+    def plotData(self,
+            resultName:str,
+            locationGroup:str,
+            requiredTags:list = None,
+            tagsToExclude:list = None,
+            chipType_orTypes = None,
+            chipGroupsDict:dict = None,
+            *,
+            datasheetIndex:int = None,
+            colormapName:str = None,
+            dataRangeMin:float = None,
+            dataRangeMax:float = None,
+            NoneColor = None,
+            clippingHighColor = None,
+            clippingLowColor = None,
+            BackColor = 'White',
+            colorbarLabel:str = None,
+            printChipLabels:bool = False,
+            chipLabelsDirection:str = None,
+            title:str = None,
+            dpi = None,
+            **kwargs
+            ):
+        """Creates a subchip-scale plot of given results.
+        
+        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
+        (defined in mongoreader/plotting/waferPlotting.py)
+
+        Args:
+            resultName (str): The name of the result to be plotted.
+            locationGroup (str): The location name associated to the results.
+            chipType_orTypes (str | List[str]): Pass any of the following
+                strings or a list of them to select which wafer components are
+                considered: "chips", "testChips", "bars", "testCells".
+                Defaults to "chips".
+            
+
+        Keyword arguments (**kwargs):
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all <chipType1> must be present within the dictionary.
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
+        """
+
+        plt = wplt.waferPlotter(self._obj.connection, self._obj.waferBlueprint)
+    
+        if chipType_orTypes is None:
+            chipTypes = ['chips']
+        elif not isinstance(chipType_orTypes, list):
+            chipTypes = [chipType_orTypes]
+        else:
+            chipTypes = chipType_orTypes
+
+        log.debug(f'[plotResults] chipTypes: {chipTypes}')
+
+        dataDict = self.retrieveData(
+            resultName,
+            locationGroup,
+            requiredTags,
+            tagsToExclude,
+            chipType_orTypes,
+            chipGroupsDict,
+            datasheetIndex = datasheetIndex)
+        
+        if title is None: title = resultName
+
+        plt.plotData_subchipScale(dataDict,
+            chipTypes = chipTypes,
+            chipGroupsDict = chipGroupsDict,
+            title = title,
+            NoneColor = NoneColor,
+            colormapName=colormapName,
+            dataRangeMin = dataRangeMin,
+            dataRangeMax = dataRangeMax,
+            clippingHighColor = clippingHighColor,
+            clippingLowColor = clippingLowColor,
+            BackColor = BackColor,
+            waferName = self._obj.wafer.name,
+            colorbarLabel = colorbarLabel,
+            printChipLabels = printChipLabels,
+            chipLabelsDirection = chipLabelsDirection,
+            dpi = dpi,
+            )
+
+        return dataDict
+
+    def plotAveragedData(self,
+            resultName:str,
+            locationGroup:str,
+            requiredTags:list = None,
+            tagsToExclude:list = None,
+            chipType_orTypes = None,
+            chipGroupsDict:dict = None,
+            *,
+            datasheetIndex:int = None,
+            colormapName:str = None,
+            dataRangeMin:float = None,
+            dataRangeMax:float = None,
+            NoneColor = None,
+            clippingHighColor = None,
+            clippingLowColor = None,
+            BackColor = 'White',
+            colorbarLabel:str = None,
+            printChipLabels:bool = False,
+            chipLabelsDirection:str = None,
+            title:str = None,
+            dpi = None,
+            **kwargs
+            ):
+        """Creates a subchip-scale plot of given results.
+        
+        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
+        (defined in mongoreader/plotting/waferPlotting.py)
+
+        Args:
+            resultName (str): The name of the result to be plotted.
+            locationGroup (str): The location name associated to the results.
+            chipType_orTypes (str | List[str]): Pass any of the following
+                strings or a list of them to select which wafer components are
+                considered: "chips", "testChips", "bars", "testCells".
+                Defaults to "chips".
+            
+
+        Keyword arguments (**kwargs):
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all <chipType1> must be present within the dictionary.
+            searchDatasheetReady (bool, optional): If True, only results that
+                have the field "datasheetReady" set to True are scooped.
+                If "datasheetReady" is False or missing, the result is ignored.
+                Defaults to True.
+            requiredStatus (str, optional): If passed, only test entries whose
+                "status" field is equal to requiredStatus are considered.
+                Defaults to None.
+            requiredProcessStage (str, optional): If passed, only test entries
+                whose "processStage" field is equal to requiredStatus are
+                considered. Defaults to None.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
+        """
+
+        plt = wplt.waferPlotter(self._obj.connection, self._obj.waferBlueprint)
+    
+        if chipType_orTypes is None:
+            chipTypes = ['chips']
+        elif not isinstance(chipType_orTypes, list):
+            chipTypes = [chipType_orTypes]
+        else:
+            chipTypes = chipType_orTypes
+
+        log.debug(f'[plotResults] chipTypes: {chipTypes}')
+
+        dataDict = self.retrieveAveragedData(
+            resultName,
+            locationGroup,
+            requiredTags,
+            tagsToExclude,
+            chipType_orTypes,
+            chipGroupsDict,
+            datasheetIndex = datasheetIndex)
+        
+        if title is None: title = resultName + ' (Averaged)'
+
+        plt.plotData_chipScale(dataDict,
+            chipTypes = chipTypes,
+            chipGroupsDict = chipGroupsDict,
+            title = title,
+            NoneColor = NoneColor,
+            colormapName=colormapName,
+            dataRangeMin = dataRangeMin,
+            dataRangeMax = dataRangeMax,
+            clippingHighColor = clippingHighColor,
+            clippingLowColor = clippingLowColor,
+            BackColor = BackColor,
+            waferName = self._obj.wafer.name,
+            colorbarLabel = colorbarLabel,
+            printChipLabels = printChipLabels,
+            chipLabelsDirection = chipLabelsDirection,
+            dpi = dpi,
+            )
+
+        return dataDict
+
+
+
+@_attributeClassDecoratorMaker(_Datasheet)
 class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer,
     its related components (chips, test chips, bars) and their blueprints.
@@ -455,6 +809,71 @@ class waferCollation(c.collation):
     # Data retrieval methods
 
 
+    def _selectLabels(self, chipTypes:list, chipGroupsDict:dict):
+        """Given the combination of chipTypes and chipGroupsDict, it returns
+        the list of labels to which they correspond
+
+        Args:
+            chipTypes (list[str] | None): The macro-groups ("chips",
+                "testChips", "bars", "testCells")
+            chipGroupsDict (dict | None): The sub-groups for each of the
+                macro groups.
+        """
+
+        # Type checks
+        if chipTypes is not None:
+
+            for el in chipTypes:
+                if not isinstance(el, str):
+                    raise TypeError(f'"chipTypes" must None or a list of strings among {self._allowedChipTypes}.')
+                if not all([el in self._allowedChipTypes for el in chipTypes]):
+                    raise ValueError(f'"chipTypes" must None or a list of strings among {self._allowedChipTypes}.')
+
+        if chipGroupsDict is not None:
+
+            if not isinstance(chipGroupsDict, dict):
+                raise TypeError(f'"chipGroupsDict" must be a dictionary.')
+
+            if not all([key in chipTypes for key in chipGroupsDict]):
+                raise ValueError(f'The keys of "chipGroupsDict" must be among "chipTypes" ({chipTypes}).')
+
+            for ctype, groups in chipGroupsDict.items():
+                
+                if groups is not None:
+                    if not isinstance(groups, list):
+                        raise TypeError(f'Values of "groupsDict" must be None or a list of strings among self.allowedGroupsDict.')
+                    
+                    if not all([g in self._allowedGroupsDict[ctype] for g in groups]):
+                        raise ValueError(f'Values of "groupsDict" must be None or a list of strings among self.allowedGroupsDict.')
+
+        chipSerials = []
+
+        if chipTypes is None:
+            chipTypes = self._allowedChipTypes
+        
+        if chipGroupsDict is None:
+            chipGroupsDict = {chipType: None for chipType in chipTypes}
+
+        for chipType, chipGroups in chipGroupsDict.items():
+
+            attributeClass = self._waferBlueprintAttributeClassFromType(chipType)
+
+            if chipGroups is None:
+                newLabels = attributeClass.retrieveLabels()
+
+            else:
+                newLabels = []
+                for group in chipGroups:
+                    newLabels += attributeClass.retrieveGroupLabels(group)
+
+            chipSerials += newLabels
+
+        if chipSerials == []:
+            return None
+        
+        return chipSerials
+
+
     def retrieveAllTestResultNames(self):
         """Returns the list of all the test result names found in the test
         history of all the chips of the collation.
@@ -510,6 +929,12 @@ class waferCollation(c.collation):
         "scoopComponentResults" (defined in mongoreader/goggleFunctions.py).
         See its documentation for the meaning of arguments not listed below."""
 
+        if not isinstance(locationGroup_orGroups, list):
+            locationGroups = [locationGroup_orGroups]
+        else:
+            locationGroups = locationGroup_orGroups
+
+
         if chipType_orTypes is None:
             chipTypes = ['chips']
         else:
@@ -517,62 +942,13 @@ class waferCollation(c.collation):
                 chipTypes = chipType_orTypes
             else:
                 chipTypes = [chipType_orTypes]
-
-            for el in chipTypes:
-                if not isinstance(el, str):
-                    raise TypeError('"chipType_orTypes" must be a string, a list of strings, or None.')
-
-        if not all([el in ['chips', 'testChips', 'bars', 'testCells'] for el in chipTypes]):
-            raise ValueError('Allowed values for "chipType_orTypes" are "chips", "testChips", "bars", "testCells".')
-
-        
-        if chipGroupsDict is not None:
-            
-            if not all([key in chipTypes for key in chipGroupsDict]):
-                raise ValueError(f'The keys of "groupsDict" must be among "chipTypes" ({chipTypes}).')
-
-            for ctype, groups in chipGroupsDict.items():
-                if groups is not None:
-                    if not all([g in self._allowedGroupsDict[ctype] for g in groups]):
-                        raise TypeError(f'Values of "groupsDict" must correspond to those among self.allowedGroupsDict.')
-
-
-        
-        if locationGroup_orGroups is None:
-            locationGroups = None
-        else:
-            if isinstance(locationGroup_orGroups, list):
-                locationGroups = locationGroup_orGroups
-            else:
-                locationGroups = [locationGroup_orGroups]
-
-            for el in locationGroups:
-                if not isinstance(el, str):
-                    raise TypeError('"locationGroup_orGroups" must be a string, a list of strings or None.')
                 
 
-        chipSerials = []        
+        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
         
-        if chipGroupsDict is None:
-            chipGroupsDict = {chipType: None for chipType in chipTypes}
-
-        for chipType, chipGroups in chipGroupsDict.items():
-
-            attributeClass = self._waferBlueprintAttributeClassFromType(chipType)
-
-            if chipGroups is None:
-                newLabels = attributeClass.retrieveLabels()
-
-            else:
-                newLabels = []
-                for group in chipGroups:
-                    newLabels += attributeClass.retrieveGroupLabels(group)
-
-            chipSerials += newLabels
-
-
-        if chipSerials == []:
+        if chipSerials is None:
             mom.log.warning(f'No chip serials have been determined!')
+            return None
         
         locationDict = {}
         for serial in chipSerials:
@@ -999,29 +1375,35 @@ class waferCollation(c.collation):
     @staticmethod
     def _printWaferInfo(wafer, printIDs:bool = False):
 
-        nameStr = f'{"[wafer]":>11}   {_nameString(wafer, printIDs)}'
-        statusStr = f'{wafer.getField("status", "<No status>", verbose = False):20}'
-        stageStr = f'{wafer.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        nameStr = f'{"(wafer)":>11}                  {_nameString(wafer, printIDs)}'
+        statusStr = f'{wafer.getField("status", "-", verbose = False):20}'
+        stageStr = f'{wafer.getField("processStage", "-", verbose = False):20}'
         string = f'{nameStr} {stageStr} {statusStr}'
         
         print(string)
 
     @staticmethod
-    def _printBarInfo(bar, printIDs:bool = False):
+    def _printBarInfo(label:str, bar, printIDs:bool = False):
 
-        nameStr = f'{"[bar]":>11}   {_nameString(bar, printIDs)}'
-        statusStr = f'{bar.getField("status", "<No status>", verbose = False):20}'
-        stageStr = f'{bar.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        labelStr = f'[{label}]'
+        labelStr = f'{labelStr:12}'
+
+        nameStr = f'{"(bar)":>11}   {labelStr}   {_nameString(bar, printIDs)}'
+        statusStr = f'{bar.getField("status", "-", verbose = False):20}'
+        stageStr = f'{bar.getField("processStage", "-", verbose = False):20}'
         string = f'{nameStr} {stageStr} {statusStr}'
 
         print(string)
 
     @staticmethod
-    def _printChipInfo(chip, label, printIDs:bool = False):
+    def _printChipInfo(label:str, chip, chipType:str, printIDs:bool = False):
 
-        nameStr = f'{f"[{label}]":>11}   {_nameString(chip, printIDs)}'
-        statusStr = f'{chip.getField("status", "<No status>", verbose = False):20}'
-        stageStr = f'{chip.getField("processStage", "<No proc. stage>", verbose = False):20}'
+        labelStr = f'[{label}]'
+        labelStr = f'{labelStr:12}'
+
+        nameStr = f'{f"({chipType})":>11}   {labelStr}   {_nameString(chip, printIDs)}'
+        statusStr = f'{chip.getField("status", "-", verbose = False):20}'
+        stageStr = f'{chip.getField("processStage", "-", verbose = False):20}'
         string = f'{nameStr} {stageStr} {statusStr}'
 
         print(string)
@@ -1045,41 +1427,40 @@ class waferCollation(c.collation):
             - excludeNoneStatus = False (bool)
         """
 
+        # Header
+        print(f'Wafer Collation "{self.wafer.name}" - Dashboard\n')
+        headerStr = f'{"chip type":11}   {"label":12}   {"Cmp. name":35} {"Process stage":20} {"Status":20}'
+        print(headerStr)
+        print(len(headerStr)*'-')
+
         if printWafer:
             self._printWaferInfo(self.wafer, printIDs)
 
-        bars = [] if self.bars is None else self.bars
-        chips = [] if self.chips is None else self.chips
-        testChips = [] if self.testChips is None else self.testChips
-        testCells = [] if self.testCells is None else self.testCells
+        barsDict = {} if self.barsDict is None else self.barsDict
+        chipsDict = {} if self.chipsDict is None else self.chipsDict
+        testChipsDict = {} if self.testChipsDict is None else self.testChipsDict
+        testCellsDict = {} if self.testCellsDict is None else self.testCellsDict
 
+        # Table
         if printBars:
-            for bar in bars:
-                if bar.status is None:
-                    if excludeNoneStatus:
-                        continue
-                self._printBarInfo(bar, printIDs)
+            for label, bar in barsDict.items():
+                if excludeNoneStatus and bar.status is None: continue
+                self._printBarInfo(label, bar, printIDs)
 
         if printChips:
-            for chip in chips:
-                if chip.status is None:
-                    if excludeNoneStatus:
-                        continue
-                self._printChipInfo(chip, 'chip', printIDs)
+            for label, chip in chipsDict.items():
+                if excludeNoneStatus and chip.status is None: continue
+                self._printChipInfo(label, chip, 'chip', printIDs)
 
         if printTestChips:
-            for chip in testChips:
-                if chip.status is None:
-                    if excludeNoneStatus:
-                        continue
-                self._printChipInfo(chip, 'test chip', printIDs)
+            for label, chip in testChipsDict.items():
+                if excludeNoneStatus and chip.status is None: continue
+                self._printChipInfo(label, chip, 'test chip', printIDs)
 
         if printTestCells:
-            for chip in testCells:
-                if chip.status is None:
-                    if excludeNoneStatus:
-                        continue
-                self._printChipInfo(chip, 'test cell', printIDs)
+            for label, chip in testCellsDict.items():
+                if excludeNoneStatus and chip.status is None: continue
+                self._printChipInfo(label, chip, 'test cell', printIDs)
         
 
 

@@ -1,5 +1,6 @@
 from mongomanager import log
 from mongomanager import component as cmpClass
+from mongomanager import blueprint
 from datautils import dataClass
 
 class chipGoggleFunctions:
@@ -11,6 +12,9 @@ class chipGoggleFunctions:
     def chipStatus(chip):
         return chip.status
 
+
+    # --------------------------------------------------------------------------
+    # Test history scoop functions
 
     def scoopResultsFromTestEntry(
             testEntry:dict,
