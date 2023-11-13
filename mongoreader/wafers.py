@@ -1,4 +1,5 @@
 import mongomanager as mom
+from mongomanager.goggleFunctions import componentGoggleFunctions as cmpGoggles
 # import mongomanager.info as i
 import mongoreader.core as c
 import mongoreader.errors as e
@@ -12,8 +13,7 @@ from mongomanager import log
 from mongomanager.errors import DocumentNotFound
 
 from numpy import average
-
-chipGoggles = gf.chipGoggleFunctions()
+from pandas import DataFrame, concat
 
 
 class _attributeClass:
@@ -42,102 +42,71 @@ def _attributeClassDecoratorMaker(attributeClass):
 
     return decorator
 
-class _Datasheet(_attributeClass):
+class _Datasheets(_attributeClass):
     """Attribute class to apply Datasheet methods to wafer collations"""
     
-    def printHelpInfo(self):
-        pass
 
+    def printHelpInfo(self):
+        raise NotImplementedError('Not yet implemented.')
 
     def retrieveData(self,
-                    resultName:str,
-                    locationGroup:str,
-                    requiredTags:list = None,
-                    tagsToExclude:list = None,
                     chipType_orTypes = None,
                     chipGroupsDict:dict = None,
+                    resultNames:list = None,
+                    requiredTags:list = None,
+                    tagsToExclude:list = None,
+                    locations:list = None,
                     *,
-                    datasheetIndex:int = None
+                    returnDataFrame:bool = False,
+                    datasheetIndex:int = None,
                 ):
         
-
         if chipType_orTypes is None:
             chipTypes = ['chips']
         else:
             chipTypes = [chipType_orTypes] if not isinstance(chipType_orTypes, list) else chipType_orTypes
         
         cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
-        
 
-
-        # Scooping results
-
-        dataDict = {}
+        allResults = []
 
         for label in cmpLabels:
             cmp = self._obj._allComponentsDict[label]
 
-            # Retrieving all possible locations and defining sub-dict
-            bp = self._obj._allComponentBPdict[label]
-            locations = bp.Locations.retrieveGroupElements(locationGroup)
-            subDataDict = {loc: None for loc in locations}
-
-            # Scooping results from datasheet
-            scoopedResults = cmp.Datasheet.scoopResults(
-                        resultName,
+            scoopedResults = cmp.Datasheet.retrieveData(
+                        resultNames,
                         requiredTags,
                         tagsToExclude,
                         locations = locations,
+                        returnDataFrame = returnDataFrame,
                         datasheetIndex = datasheetIndex,
                         verbose = False
                     )
             
-            if scoopedResults is None: # Early exit
-                dataDict[label] = subDataDict
+            if scoopedResults is None:
                 continue
+            
+            if returnDataFrame:
+                scoopedResults.insert(0, "label", len(scoopedResults)*[label])
+                scoopedResults.insert(0, "componentID", len(scoopedResults)*[cmp.ID])
+                scoopedResults.insert(0, "componentName", len(scoopedResults)*[cmp.name])
+                scoopedResults.insert(0, "wafer", len(scoopedResults)*[self._obj.wafer.name])
+            else:
+                additionalInfo = {
+                        'wafer': self._obj.wafer.name,
+                        'componentName': cmp.name,
+                        'componentID': cmp.ID,
+                        'label': label,
+                    }
+                scoopedResults = [{**additionalInfo, **res} for res in scoopedResults]
+                    
+            allResults.append(scoopedResults)
+            
+        if returnDataFrame:
+            return concat(allResults, ignore_index = True)
 
-            # Collecting the results in the sub-dict
-
-            for resDict in scoopedResults:
-
-                # resDict = {
-                #     "resultName": "IL",
-                #     "location": "MZ-X",
-                #     "requiredTags": [
-                #         "1550nm",
-                #         "25C"
-                #     ],
-                #     "tagsToExclude": null,
-                #     "resultData": {
-                #         "value": 13.908280000000003,
-                #         "error": 0.4,
-                #         "unit": "dB"
-                #     },
-                #     "testReportID": "6545f5752687e9d6549ec0b6"
-                # }
-
-                loc = resDict.get('location')
-                if loc is None:
-                    log.warning('A location for a scooped result is None. Skipped.')
-                    continue
-
-                resValue = resDict.get('resultData')
-                if resValue is not None:
-                    resValue = resValue.get('value')
-                
-                if resValue is None:
-                    log.warning('A result value for a scooped result is None. Skipped.')
-                    continue
-
-                if subDataDict[loc] is not None:
-                    log.warning(f'Multiple results for component "{cmp.name}" - location "{loc}"')
-                
-                subDataDict[loc] = resValue
-        
-            dataDict[label] = subDataDict
-
-        # Returning dataDictinoary
-        return dataDict
+        else:
+            return _joinListsOrNone(*allResults)
 
     def retrieveAveragedData(self,
             resultName:str,
@@ -148,6 +117,7 @@ class _Datasheet(_attributeClass):
             chipGroupsDict:dict = None,
             *,
             datasheetIndex:int = None):
+        raise NotImplementedError()
         
         dd = self.retrieveData(
                     resultName,
@@ -370,7 +340,7 @@ class _Datasheet(_attributeClass):
 
 
 
-@_attributeClassDecoratorMaker(_Datasheet)
+@_attributeClassDecoratorMaker(_Datasheets)
 class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer,
     its related components (chips, test chips, bars) and their blueprints.
@@ -969,7 +939,7 @@ class waferCollation(c.collation):
                         for resName in resultNames}
 
         for serial in chipSerials:
-            goggled = chipGoggles.scoopComponentResults(
+            goggled = cmpGoggles.scoopComponentResults(
                             self._allComponentsDict[serial],
                             resultNames,
                             locationDict[serial], # All location names
