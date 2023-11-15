@@ -1,13 +1,16 @@
 import mongomanager as mom
+from mongomanager import log
 from mongomanager.goggleFunctions import componentGoggleFunctions as cmpGoggles
 # import mongomanager.info as i
 import mongoreader.core as c
 import mongoreader.errors as e
 import mongoreader.plotting.waferPlotting as wplt
 
+from datautils import dataClass
+
 from mongoutils import isID
 from mongoutils.connections import opened
-from mongomanager import log
+
 
 from mongomanager.errors import DocumentNotFound
 
@@ -49,7 +52,7 @@ class _Datasheets(_attributeClass):
         raise NotImplementedError('Not yet implemented.')
 
     def retrieveData(self,
-                    chipType_orTypes = None,
+                    chipTypes:list = None,
                     chipGroupsDict:dict = None,
                     resultNames:list = None,
                     requiredTags:list = None,
@@ -60,10 +63,8 @@ class _Datasheets(_attributeClass):
                     datasheetIndex:int = None,
                 ):
         
-        if chipType_orTypes is None:
+        if chipTypes is None:
             chipTypes = ['chips']
-        else:
-            chipTypes = [chipType_orTypes] if not isinstance(chipType_orTypes, list) else chipType_orTypes
         
         cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
 
@@ -111,21 +112,45 @@ class _Datasheets(_attributeClass):
         else:
             return _joinListsOrNone(*allResults)
 
-    def _retrievePlotData(self,
-                            resultName:str, # A single one
-                            locationGroup:str, # For that result name
-                            chipTypes = None,
-                            chipGroupsDict:dict = None,
-                            requiredTags:list = None,
-                            tagsToExclude:list = None,
-                            locations:list = None,
-                            *,
-                            returnDataFrame:bool = False,
-                            datasheetIndex:int = None,
-                        ):
+    def _retrieveDatadictData(self,
+                    resultName:str, # A single one
+                    locationGroup:str, # For that result name
+                    chipTypes = None,
+                    chipGroupsDict:dict = None,
+                    requiredTags:list = None,
+                    tagsToExclude:list = None,
+                    *,
+                    datasheetIndex:int = None,
+                    returnValuesOnly:bool = False,
+                    returnAveraged:bool = False,
+                ):
+        """Given a resultName and location Group, it builds up and return a
+        dictionary in the form.
         
+        {
+            <component label 1>: {
+                <location 1>: <scooped result dict>,
+                <location 2>: <scooped result dict>,
+                ...
+            },
+            <component label 2>: {
+                <location 1>: <scooped result dict>,
+                <location 2>: <scooped result dict>,
+                ...
+            },
+            ...
+        }
+        
+        Location group is used to determine the relevant locations for each
+        chip. 
+        
+        Notice that different chips can have different locations associated to
+        the same location group.
+        """
 
         cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
+
+        dataDict = {label: None for label in cmpLabels}
 
         for label in cmpLabels:
             
@@ -133,59 +158,80 @@ class _Datasheets(_attributeClass):
             bp = self._obj._allComponentBPdict[label]
 
             # Retrieving locations
-            locDict = bp.Locations.retrieveGroupsDict()
+            locations = bp.Locations.retrieveGroupElements(locationGroup)
             
-            if locDict is None:
+            if locationGroup is None:
                 log.warning(f'Could not retrieve locations for chip "{chip.name}".')
                 continue
 
-            locations = locDict.get(locationGroup)
+            dataDict[label] = {loc: None for loc in locations}
 
-            if locations is None:
-                log.warning(f'Could not retrieve locations for chip "{chip.name}".')
-                continue
-                
-            scooped = chip.Datasheet.retrieveData(
+            # Scooped results for the given chip
+            # List of dictionaries
+            scoopedDicts = chip.Datasheet.retrieveData(
                 [resultName],
                 requiredTags,
                 tagsToExclude,
                 locations,
-                returnDataFrame = returnDataFrame,
+                returnDataFrame = False,
                 datasheetIndex = datasheetIndex,
                 verbose = False)
 
+            if scoopedDicts is None: continue
 
+            for scooped in scoopedDicts:
+
+                loc = scooped.get('location')
+                log.debug(f'Location: {loc}')
+
+                if returnValuesOnly:
+                    data = scooped.get('resultData')
+                    if data is None:
+                        value = None
+                    else:
+                        value = data.get('value')
+
+                    log.debug(f'Value: {value}')
+
+                    dataDict[label][loc] = value
+                else:
+                    dataDict[label][loc] = scooped
+
+        if returnAveraged:
+            dataDict = averageSubchipScaleDataDict(dataDict)
         
+        return dataDict
 
     def retrieveAveragedData(self,
             resultName:str,
             locationGroup:str,
+            chipTypes = None,
+            chipGroupsDict:dict = None,
             requiredTags:list = None,
             tagsToExclude:list = None,
-            chipType_orTypes = None,
-            chipGroupsDict:dict = None,
             *,
-            datasheetIndex:int = None):
-        raise NotImplementedError()
-        
-        dd = self.retrieveData(
+            datasheetIndex:int = None,
+            returnValuesOnly:bool = False):
+       
+        return self._retrieveDatadictData(
                     resultName,
                     locationGroup,
+                    chipTypes,
+                    chipGroupsDict,
                     requiredTags,
                     tagsToExclude,
-                    chipType_orTypes,
-                    chipGroupsDict,
-                    datasheetIndex = datasheetIndex)
-
-        return averageSubchipScaleDataDict(dd)
+                    datasheetIndex = datasheetIndex,
+                    returnValuesOnly = returnValuesOnly,
+                    returnAveraged = True
+                    )
 
     def plotData(self,
             resultName:str,
             locationGroup:str,
+            chipTypes:list = None,
+            chipGroupsDict:list = None,
             requiredTags:list = None,
             tagsToExclude:list = None,
-            chipType_orTypes = None,
-            chipGroupsDict:dict = None,
             *,
             datasheetIndex:int = None,
             colormapName:str = None,
@@ -200,7 +246,6 @@ class _Datasheets(_attributeClass):
             chipLabelsDirection:str = None,
             title:str = None,
             dpi = None,
-            **kwargs
             ):
         """Creates a subchip-scale plot of given results.
         
@@ -242,33 +287,24 @@ class _Datasheets(_attributeClass):
         """
 
         plt = wplt.waferPlotter(self._obj.connection, self._obj.waferBlueprint)
-    
-        if chipType_orTypes is None:
-            chipTypes = ['chips']
-        elif not isinstance(chipType_orTypes, list):
-            chipTypes = [chipType_orTypes]
-        else:
-            chipTypes = chipType_orTypes
 
-        log.debug(f'[plotResults] chipTypes: {chipTypes}')
+        if chipTypes is None: chipTypes = ['chips']
 
-        
-
-        # I first determine the locations available for each chip type.
-
-
-        dataDict = self.retrieveData(
-            resultName,
-            locationGroup,
-            requiredTags,
-            tagsToExclude,
-            chipType_orTypes,
-            chipGroupsDict,
-            datasheetIndex = datasheetIndex)
+        # Should update to retrive unit!
+        dataDict = self._retrieveDatadictData(
+                            resultName,
+                            locationGroup,
+                            chipTypes,
+                            chipGroupsDict,
+                            requiredTags,
+                            tagsToExclude,
+                            datasheetIndex = datasheetIndex,
+                            returnValuesOnly=True,
+                            returnAveraged=False)
         
         if title is None: title = resultName
 
-        plt.plotData_subchipScale(dataDict,
+        return plt.plotData_subchipScale(dataDict,
             chipTypes = chipTypes,
             chipGroupsDict = chipGroupsDict,
             title = title,
@@ -285,15 +321,15 @@ class _Datasheets(_attributeClass):
             chipLabelsDirection = chipLabelsDirection,
             dpi = dpi,
             )
+    
 
-        return dataDict
 
     def plotAveragedData(self,
             resultName:str,
             locationGroup:str,
             requiredTags:list = None,
             tagsToExclude:list = None,
-            chipType_orTypes = None,
+            chipTypes:list = None,
             chipGroupsDict:dict = None,
             *,
             datasheetIndex:int = None,
@@ -305,11 +341,10 @@ class _Datasheets(_attributeClass):
             clippingLowColor = None,
             BackColor = 'White',
             colorbarLabel:str = None,
-            printChipLabels:bool = False,
+            printChipLabels:bool = True,
             chipLabelsDirection:str = None,
             title:str = None,
             dpi = None,
-            **kwargs
             ):
         """Creates a subchip-scale plot of given results.
         
@@ -352,23 +387,19 @@ class _Datasheets(_attributeClass):
 
         plt = wplt.waferPlotter(self._obj.connection, self._obj.waferBlueprint)
     
-        if chipType_orTypes is None:
-            chipTypes = ['chips']
-        elif not isinstance(chipType_orTypes, list):
-            chipTypes = [chipType_orTypes]
-        else:
-            chipTypes = chipType_orTypes
+        if chipTypes is None: chipTypes = ['chips']
 
         log.debug(f'[plotResults] chipTypes: {chipTypes}')
 
         dataDict = self.retrieveAveragedData(
             resultName,
             locationGroup,
+            chipTypes,
+            chipGroupsDict,
             requiredTags,
             tagsToExclude,
-            chipType_orTypes,
-            chipGroupsDict,
-            datasheetIndex = datasheetIndex)
+            datasheetIndex = datasheetIndex,
+            returnValuesOnly = True)
         
         if title is None: title = resultName + ' (Averaged)'
 
@@ -391,7 +422,6 @@ class _Datasheets(_attributeClass):
             )
 
         return dataDict
-
 
 
 @_attributeClassDecoratorMaker(_Datasheets)
@@ -631,58 +661,6 @@ class waferCollation(c.collation):
         return bps, bpDict_labelsBPs
 
 
-
-    # def _collectChipBPalikes(self, waferBlueprint, WBPfield:str, what:str):
-
-    #     log.debug(f'[_collectChipBPalikes] field: "{WBPfield}".')
-
-    #     chipBlueprintDicts = waferBlueprint.getField(WBPfield, verbose = None)
-
-    #     if chipBlueprintDicts is None:
-    #         log.spare(f'No blueprints associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}".')
-    #         return None, None
-
-    #     bpDict_labelsIDs = {dic['label']: dic['ID'] for dic in chipBlueprintDicts}
-
-    #     IDs = []
-    #     for dic in chipBlueprintDicts:
-    #         if dic['ID'] not in IDs:
-    #             IDs.append(dic['ID'])
-
-    #     bpDict_IDs = {}
-    #     for ID in IDs:
-    #         bp = mom.queryOne(self.connection, {'_id': mom.toObjectID(ID)}, None,
-    #                 mom.blueprint.defaultDatabase,
-    #                 mom.blueprint.defaultCollection,
-    #                 returnType = 'native', verbose = False)
-    #         if bp is None:
-    #             raise DocumentNotFound(f'Could not rietrieve blueprint with ID "{ID}".')
-    #         bpDict_IDs[ID] = bp
-
-    #     bps = list(bpDict_IDs.values())
-
-    #     bpDict_labelsBPs = {label: bpDict_IDs[bpDict_labelsIDs[label]] for label in bpDict_labelsIDs}
-            
-    #     for bp in bps:                
-    #         if not isinstance(bp, mom.blueprint):
-    #             log.warning(f'Some documents associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}" are not blueprints.')
-            
-    #     if bps == []: bps = None
-    #     if bpDict_labelsBPs == {}: bpDict_labelsBPs = None
-
-
-    #     # Checking amount
-
-    #     amount = len(bps) if bps is not None else 0  
-    #     expected = len(IDs)
-    #     log.info(f'Collected {amount} {what}s.')
-    #     if amount != expected:
-    #         log.warning(f'Collected {amount} {what}s but {expected} were expected.')
-        
-    #     return bps, bpDict_labelsBPs
-
-
-
     def _collectChipBlueprints(self, waferBlueprint):
         """Returns the chip blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
@@ -699,7 +677,6 @@ class waferCollation(c.collation):
         """Returns the test cell blueprints associated to the wafer, without repetitions"""
         return self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints')
         
-
 
     def _collectChipsalike_commonFunction(self, what, allChips, bps, bpDict):
 
@@ -882,7 +859,7 @@ class waferCollation(c.collation):
     # Data retrieval methods
 
 
-    def _selectLabels(self, chipTypes:list, chipGroupsDict:dict):
+    def _selectLabels(self, chipTypes:list = None, chipGroupsDict:dict = None):
         """Given the combination of chipTypes and chipGroupsDict, it returns
         the list of labels to which they correspond
 
@@ -927,17 +904,26 @@ class waferCollation(c.collation):
         if chipGroupsDict is None:
             chipGroupsDict = {chipType: None for chipType in chipTypes}
 
+        log.debug(f'chipTypes: {chipTypes}')
+        log.debug(f'chipGroupsDict: {chipGroupsDict}')
+
         for chipType, chipGroups in chipGroupsDict.items():
 
             attributeClass = self._waferBlueprintAttributeClassFromType(chipType)
 
             if chipGroups is None:
                 newLabels = attributeClass.retrieveLabels()
+                log.debug(f'Chip groups is None: newLabels: {newLabels}')
+                if newLabels is None: continue
 
             else:
                 newLabels = []
                 for group in chipGroups:
-                    newLabels += attributeClass.retrieveGroupLabels(group)
+                    newLabels = attributeClass.retrieveGroupLabels(group)
+                    if newLabels is None: continue
+                    chipSerials += newLabels
+                    log.debug(f'newLabels for group "{group}": {newLabels}')
+
 
             chipSerials += newLabels
 
@@ -971,7 +957,7 @@ class waferCollation(c.collation):
 
     def retrieveTestData(self,
         resultName_orNames,
-        chipType_orTypes,
+        chipType_orTypes = None,
         chipGroupsDict:dict = None,
         locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
@@ -1614,13 +1600,43 @@ class waferCollation_Coimbra(waferCollation):
 # ------------------------------------------------------------------------------
 
 
-def averageSubchipScaleDataDict(dataDict_subchipScale):
+def averageSubchipScaleDataDict(dataDict_subchipScale,
+                                returnValuesOnly:bool = False):
     """Given a subchip-scale datadict, it returns a chip-scale dictionary
     with averaged values.
-    
-    Non-float/int and None values are ignored."""
 
-    def averageValues(values):
+    Non-float/int and None values are ignored.
+
+    Notice that inner values of dataDict_subchipScale may be numbers or
+    test result dictionaries, that is:
+
+    {
+        <component label 1>: {
+            <location 1>: <value 1>,
+            <location 2>: <value 2>,
+            ...
+        },
+        ...
+    }
+
+    or
+
+    {
+        <component label 1>: {
+            <location 1>: <test result dict 1>,
+            <location 2>: <test result dict 2>,
+            ...
+        },
+        ...
+    }
+    
+    The output dictionary contains dataclass dictionaries ("value", "unit"),
+    with the error being left out.
+
+    If "returnValuesOnly" is set to True, only the values are returned.
+    """
+
+    def averageValues(values:list):
 
         values = [v for v in values if isinstance(v, int) or isinstance(v, float)]
         
@@ -1628,9 +1644,74 @@ def averageSubchipScaleDataDict(dataDict_subchipScale):
             return None
         
         return average(values)
+    
+    def averageUnits(units:list):
 
-    dataDict = {key: averageValues(d.values())
+        log.debug(f'[averageUnits] units: {units}')
+        while None in units: units.remove(None)
+        
+        if len(units) == 0:
+            return None
+        
+        elif len(units) == 1:
+            unit = units[0]
+            if not isinstance(unit, str):
+                raise ValueError(f'Cannot average if dataclass units are not equal or None.')
+            return unit
+        
+        else:
+            for unit in units[1:]:
+                if unit != units[0]:
+                    raise ValueError(f'Cannot average if dataclass units are not equal or None.')
+            
+            if not isinstance(unit, str):
+                raise ValueError(f'Cannot average if dataclass units are not equal or None.')
+
+            return unit
+        
+
+    def averageDataclasses(dataclasses:list):
+        
+        dcs = [dataClass.fromDictionary(dc) if not isinstance(dc, dataClass) else dc
+               for dc in dataclasses]  
+
+        value = averageValues([dd.value for dd in dcs])
+        unit = averageUnits([dd.unit for dd in dcs])
+
+        return dataClass(value, unit = unit).dictionary()
+
+    def averageTestResults(results):
+
+        dataclasses = []
+        for result in results:
+
+            if result is None:
+                continue
+            
+            data = result.get('resultData')
+            if data is None:
+                continue
+
+            dataclasses.append(dataClass(value = data.get('value'), unit = data.get('unit')))
+
+        return averageDataclasses(dataclasses)
+    
+    
+    def averageComponentDict(dic):
+
+        if dic is None or dic == {}:
+            return None
+
+        if any([isinstance(val, dict) for val in dic.values()]):
+             # test result dictionaries
+            return averageTestResults(dic.values())
+        else: # I assume I am dealing with numbers
+            return averageValues(dic.values())
+        
+    dataDict = {key: averageComponentDict(d)
                 for key, d in dataDict_subchipScale.items()}
+    
+
     return dataDict
 
 
