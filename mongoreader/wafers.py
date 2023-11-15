@@ -62,6 +62,46 @@ class _Datasheets(_attributeClass):
                     returnDataFrame:bool = False,
                     datasheetIndex:int = None,
                 ):
+        """This method can be used to retrieve data from datasheets defined
+        for the components of the wafer collation.
+
+        The argumetns can be used to change what results are collected, as
+        described below.
+
+        Args:
+            chipTypes (List[str], optional): Pass a list containing any of the
+                following to select which wafer components are considered:
+                "chips", "testChips", "bars", "testCells".
+                Defaults to ["chips"].
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all chip type must be present within the dictionary. If
+                they are not, all the chips for that group are considered.
+            resultNames (list, optional): If passed, results whose name is not
+                listed here are ignored.
+            requiredTags (list, optional): If passed, results tags must contain
+                those listed here to be collected.
+            tagsToExclude (list, optional): If passed, results whose tags are
+                among these are not collected. Defaults to None.
+            locations (list, optional): If passed, the result location must be
+                among these for it to be collected. Defaults to None.
+
+        Keyword arguments (**kwargs):
+            returnDataFrame (bool, optional): If True, results are returned
+                as a pandas DataFrame instead of a list of dictionaries.
+                Defaults to False.
+            datasheetIndex (int, optional): If passed, the datasheet indexed
+                by datasheetIndex is passed. See mongomanager.component for
+                more info. Defaults to None.
+
+        Returns:
+            List[dict] | pandas.DataFrame: The collected results.
+        """        
         
         if chipTypes is None:
             chipTypes = ['chips']
@@ -146,6 +186,11 @@ class _Datasheets(_attributeClass):
         
         Notice that different chips can have different locations associated to
         the same location group.
+
+        returnValuesOnly: If True, the result dict is replaced with values only
+        returnAveraged: If True, to each component label is assigned a single
+            result.
+
         """
 
         cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
@@ -205,13 +250,62 @@ class _Datasheets(_attributeClass):
     def retrieveAveragedData(self,
             resultName:str,
             locationGroup:str,
-            chipTypes = None,
+            chipTypes:list = None,
             chipGroupsDict:dict = None,
             requiredTags:list = None,
             tagsToExclude:list = None,
             *,
             datasheetIndex:int = None,
             returnValuesOnly:bool = False):
+        """This method retuns a dictionary in the form
+        {
+            <component label 1>: <'value': <value>, 'unit': <unit>},
+            <component label 2>: <'value': <value>, 'unit': <unit>},
+            <component label 3>: <'value': <value>, 'unit': <unit>},
+            ...
+        }
+
+        For each component as specified by chipTypes/chipGroupsDict, this method
+        first searches datasheet values for each of the locations determined by
+        "locationGroup". Then, the average of these values (<value>) is
+        collected in the above dictionaries.
+
+        None values or values which are not float or ints are ignored.
+
+        Arguments can be used to select which data is actually collected.
+
+        Args:
+            resultName (str): The result name whose values are to be averaged.
+            locationGroup (str): The location group associated to the result.
+            chipTypes (List[str], optional): Pass a list containing any of the
+                following to select which wafer components are considered:
+                "chips", "testChips", "bars", "testCells".
+                Defaults to ["chips"].
+            chipGroupsDict (dict, optional): If passed, it can be used to filter
+                which group for each chipType is plotted. Pass it in the form
+                {
+                    <chipType1>: <list of groups for chipType1>,
+                    <chipType2>: <list of groups for chipType2>,
+                    ...
+                }
+                Not all chip types must be present within the dictionary. If
+                they are not, all the chips for that group are considered.
+            requiredTags (list[str], optional): If passed, results which lack
+                the tags listed here are ignored. Defaults to None.
+            tagsToExclude (list[str], optional): If passed, results that have
+                tags listed here are ignored. Defaults to None.
+
+        Keyword Args:
+            datasheetIndex (int, optional): If passed, the datasheet indexed
+                by datasheetIndex is passed. See mongomanager.component for
+                more info. Defaults to None.
+            returnValuesOnly (bool, optional): If True, only a value is returned
+                for each chip instead of the nested dictionary as described
+                above. Defaults to False.
+
+        Returns:
+            dict: The dictionary containing the averaged result.
+        """        
        
         return self._retrieveDatadictData(
                     resultName,
@@ -247,21 +341,48 @@ class _Datasheets(_attributeClass):
             title:str = None,
             dpi = None,
             ):
-        """Creates a subchip-scale plot of given results.
+        """Creates a subchip-scale plot for the result "resultName" and for
+        the collation chips specified by chipTypes/chipGroupsDict.
+
+        This function first retrieves a dictionary in the form
         
-        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
-        (defined in mongoreader/plotting/waferPlotting.py)
+        {
+            <component label 1>: {
+                <location 1>: <scooped result dict>,
+                <location 2>: <scooped result dict>,
+                ...
+            },
+            <component label 2>: {
+                <location 1>: <scooped result dict>,
+                <location 2>: <scooped result dict>,
+                ...
+            },
+            ...
+        }
+
+        where, to each component is associated a series of locations (retrieved
+        from "locationGroup"), and then to each location the corresponding
+        datasheet value is assigned.
+
+        This dictionary is then used to generate the plot.
+
+        For more info on argumetns not-listed here, see the documentation of
+        waferPlotter.plotData_subchipScale() (defined inmongoreader/plotting/
+        waferPlotting.py)
 
         Args:
             resultName (str): The name of the result to be plotted.
             locationGroup (str): The location name associated to the results.
-            chipType_orTypes (str | List[str]): Pass any of the following
-                strings or a list of them to select which wafer components are
-                considered: "chips", "testChips", "bars", "testCells".
-                Defaults to "chips".
+            chipTypes (List[str], optional): Pass a list containing any of the
+                following to select which wafer components are considered:
+                "chips", "testChips", "bars", "testCells".
+                Defaults to ["chips"].
             
 
         Keyword arguments (**kwargs):
+            datasheetIndex (int, optional): If passed, the datasheet indexed
+                by datasheetIndex is passed. See mongomanager.component for
+                more info. Defaults to None.
             chipGroupsDict (dict, optional): If passed, it can be used to filter
                 which group for each chipType is plotted. Pass it in the form
                 {
@@ -269,7 +390,8 @@ class _Datasheets(_attributeClass):
                     <chipType2>: <list of groups for chipType2>,
                     ...
                 }
-                Not all <chipType1> must be present within the dictionary.
+                Not all <chipType1> must be present within the dictionary. If
+                they are not, all the chips for that group are considered.
             searchDatasheetReady (bool, optional): If True, only results that
                 have the field "datasheetReady" set to True are scooped.
                 If "datasheetReady" is False or missing, the result is ignored.
@@ -348,8 +470,13 @@ class _Datasheets(_attributeClass):
             ):
         """Creates a subchip-scale plot of given results.
         
-        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
-        (defined in mongoreader/plotting/waferPlotting.py)
+        This method first calls [waferCollation].Datasheets.retrieveAveragedData(),
+        to obtain a dictionary which is then used to generate the plot. See its 
+        documentation for more info on how data are collected.
+
+        For more info on argumetns not-listed here, see the documentation of
+        waferPlotter.plotData_subchipScale() (defined inmongoreader/plotting/
+        waferPlotting.py)
 
         Args:
             resultName (str): The name of the result to be plotted.
@@ -857,7 +984,6 @@ class waferCollation(c.collation):
 
     # ---------------------------------------------------
     # Data retrieval methods
-
 
     def _selectLabels(self, chipTypes:list = None, chipGroupsDict:dict = None):
         """Given the combination of chipTypes and chipGroupsDict, it returns
