@@ -583,72 +583,121 @@ class waferCollation(c.collation):
         return wbp
 
 
-    def _collectChipBPalikes(self, waferBlueprint, WBPfield:str, what:str):
+    def _collectChipBPalikes(self, waferBlueprint, BPtype:str):
 
-        log.debug(f'[_collectChipBPalikes] field: "{WBPfield}".')
+        assert isinstance(BPtype , str), '"BPtype" must be a string.'
 
-        chipBlueprintDicts = waferBlueprint.getField(WBPfield, verbose = None)
+        assert BPtype in ["chipBlueprints", "testChipBlueprints", "barBlueprints", "testCellBlueprints"], \
+            '"BPtype" must be among "chipBlueprints", "testChipBlueprints", "barBlueprints" and "testCellBlueprints"'
+        
+        if BPtype == "chipBlueprints":
+            attributeClass = waferBlueprint.ChipBlueprints
 
-        if chipBlueprintDicts is None:
-            log.spare(f'No blueprints associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}".')
+        elif BPtype == "testChipBlueprints":
+            attributeClass = waferBlueprint.TestChipBlueprints
+
+        elif BPtype == "barBlueprints":
+            attributeClass = waferBlueprint.BarBlueprints
+
+        elif BPtype == "testCellBlueprints":
+            attributeClass = waferBlueprint.TestCellBlueprints
+
+        else:
+            raise ValueError(f'"BPtype" ("{BPtype}") is not among "chipBlueprints", "testChipBlueprints", "barBlueprints" and "testCellBlueprints".')
+
+        # {ID: {'document': <blueprint>, 'labels': <list of labels>}, ...}
+        BPsDict = attributeClass.retrieveElements(self.connection, grouped = True, verbose = False)
+
+        if BPsDict is None:
+            log.warning(f'Could not retrieve any {BPtype}.')
             return None, None
 
-        bpDict_labelsIDs = {dic['label']: dic['ID'] for dic in chipBlueprintDicts}
+        # I want a reversed dictionary:
+        # {<label>: <blueprint>, ...}
 
-        IDs = []
-        for dic in chipBlueprintDicts:
-            if dic['ID'] not in IDs:
-                IDs.append(dic['ID'])
+        bpDict_labelsBPs = {}
+        for ID, dict in BPsDict.items():
+            for label in dict.get('labels', []):
+                bpDict_labelsBPs[label] = dict.get('document')
+        
+        bps = [dic['document'] for dic in BPsDict.values()]
 
-        bpDict_IDs = {}
-        for ID in IDs:
-            bp = mom.queryOne(self.connection, {'_id': mom.toObjectID(ID)}, None,
-                    mom.blueprint.defaultDatabase,
-                    mom.blueprint.defaultCollection,
-                    returnType = 'native', verbose = False)
-            if bp is None:
-                raise DocumentNotFound(f'Could not rietrieve blueprint with ID "{ID}".')
-            bpDict_IDs[ID] = bp
-
-        bps = list(bpDict_IDs.values())
-
-        bpDict_labelsBPs = {label: bpDict_IDs[bpDict_labelsIDs[label]] for label in bpDict_labelsIDs}
-            
-        for bp in bps:                
-            if not isinstance(bp, mom.blueprint):
-                log.warning(f'Some documents associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}" are not blueprints.')
-            
         if bps == []: bps = None
         if bpDict_labelsBPs == {}: bpDict_labelsBPs = None
-
-
-        # Checking amount
-
-        amount = len(bps) if bps is not None else 0  
-        expected = len(IDs)
-        log.info(f'Collected {amount} {what}s.')
-        if amount != expected:
-            log.warning(f'Collected {amount} {what}s but {expected} were expected.')
         
+        amount = len(bps) if bps is not None else 0  
+        log.info(f'Collected {amount} {BPtype}.')
+
         return bps, bpDict_labelsBPs
+
+
+
+    # def _collectChipBPalikes(self, waferBlueprint, WBPfield:str, what:str):
+
+    #     log.debug(f'[_collectChipBPalikes] field: "{WBPfield}".')
+
+    #     chipBlueprintDicts = waferBlueprint.getField(WBPfield, verbose = None)
+
+    #     if chipBlueprintDicts is None:
+    #         log.spare(f'No blueprints associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}".')
+    #         return None, None
+
+    #     bpDict_labelsIDs = {dic['label']: dic['ID'] for dic in chipBlueprintDicts}
+
+    #     IDs = []
+    #     for dic in chipBlueprintDicts:
+    #         if dic['ID'] not in IDs:
+    #             IDs.append(dic['ID'])
+
+    #     bpDict_IDs = {}
+    #     for ID in IDs:
+    #         bp = mom.queryOne(self.connection, {'_id': mom.toObjectID(ID)}, None,
+    #                 mom.blueprint.defaultDatabase,
+    #                 mom.blueprint.defaultCollection,
+    #                 returnType = 'native', verbose = False)
+    #         if bp is None:
+    #             raise DocumentNotFound(f'Could not rietrieve blueprint with ID "{ID}".')
+    #         bpDict_IDs[ID] = bp
+
+    #     bps = list(bpDict_IDs.values())
+
+    #     bpDict_labelsBPs = {label: bpDict_IDs[bpDict_labelsIDs[label]] for label in bpDict_labelsIDs}
+            
+    #     for bp in bps:                
+    #         if not isinstance(bp, mom.blueprint):
+    #             log.warning(f'Some documents associated to field "{WBPfield}" of waferBlueprint "{waferBlueprint.name}" are not blueprints.')
+            
+    #     if bps == []: bps = None
+    #     if bpDict_labelsBPs == {}: bpDict_labelsBPs = None
+
+
+    #     # Checking amount
+
+    #     amount = len(bps) if bps is not None else 0  
+    #     expected = len(IDs)
+    #     log.info(f'Collected {amount} {what}s.')
+    #     if amount != expected:
+    #         log.warning(f'Collected {amount} {what}s but {expected} were expected.')
+        
+    #     return bps, bpDict_labelsBPs
 
 
 
     def _collectChipBlueprints(self, waferBlueprint):
         """Returns the chip blueprints associated to the wafer, without repetitions"""
-        return self._collectChipBPalikes(waferBlueprint, 'chipBlueprints', 'chip blueprint')
+        return self._collectChipBPalikes(waferBlueprint, 'chipBlueprints')
 
     def _collectTestChipBlueprints(self, waferBlueprint):
         """Returns the test chip blueprints associated to the wafer, without repetitions"""
-        return self._collectChipBPalikes(waferBlueprint, 'testChipBlueprints', 'test chip blueprint')
+        return self._collectChipBPalikes(waferBlueprint, 'testChipBlueprints')
 
     def _collectBarBlueprints(self, waferBlueprint):
         """Returns the test bar blueprints associated to the wafer, without repetitions"""
-        return self._collectChipBPalikes(waferBlueprint, 'barBlueprints', 'bar blueprint')
+        return self._collectChipBPalikes(waferBlueprint, 'barBlueprints')
 
     def _collectTestCellBlueprints(self, waferBlueprint):
         """Returns the test cell blueprints associated to the wafer, without repetitions"""
-        return self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints', 'test cell blueprint')
+        return self._collectChipBPalikes(waferBlueprint, 'testCellBlueprints')
         
 
 
@@ -698,7 +747,7 @@ class waferCollation(c.collation):
                      barBPs, barBPsDict,
                      ):
 
-        allChipsalike = wafer.ChildrenComponents.retrieveElements(self.connection)
+        allChipsalike = wafer.ChildrenComponents.retrieveElements(self.connection, verbose = False)
         
         if allChipsalike is None:
             log.warning('I retrieved no children components from the wafer.')
@@ -721,7 +770,7 @@ class waferCollation(c.collation):
 
     def _collectTestCells(self, wafer, cellBPs, cellBPsDict):
 
-        testCells = wafer.TestCells.retrieveElements(self.connection)
+        testCells = wafer.TestCells.retrieveElements(self.connection, verbose = False)
         
         # testCells
         testCells, testCellsDict = \

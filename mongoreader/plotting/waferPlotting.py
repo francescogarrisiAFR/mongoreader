@@ -134,10 +134,10 @@ class _waferPlotter:
             )
 
             # dicts, None if not found
-            self.chipP1P2s = waferBP.retrieveChipP1P2s(connection)
-            self.testChipP1P2s = waferBP.retrieveTestChipP1P2s(connection)
-            self.testCellP1P2s = waferBP.retrieveTestCellP1P2s(connection)
-            self.barsP1P2s = waferBP.retrieveBarP1P2s(connection)
+            self.chipP1P2s = waferBP.retrieveChipP1P2s(connection, verbose = False)
+            self.testChipP1P2s = waferBP.retrieveTestChipP1P2s(connection, verbose = False)
+            self.testCellP1P2s = waferBP.retrieveTestCellP1P2s(connection, verbose = False)
+            self.barsP1P2s = waferBP.retrieveBarP1P2s(connection, verbose = False)
 
             self.allP1P2s = _joinDictsOrNone(
                 self.chipP1P2s,
