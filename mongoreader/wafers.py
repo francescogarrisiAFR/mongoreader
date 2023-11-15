@@ -4,7 +4,6 @@ from mongomanager.goggleFunctions import componentGoggleFunctions as cmpGoggles
 import mongoreader.core as c
 import mongoreader.errors as e
 import mongoreader.plotting.waferPlotting as wplt
-import mongoreader.gogglesFunctions as gf
 
 from mongoutils import isID
 from mongoutils.connections import opened
@@ -86,6 +85,8 @@ class _Datasheets(_attributeClass):
             if scoopedResults is None:
                 continue
             
+            # Prepending chip-identifying data
+
             if returnDataFrame:
                 scoopedResults.insert(0, "label", len(scoopedResults)*[label])
                 scoopedResults.insert(0, "componentID", len(scoopedResults)*[cmp.ID])
@@ -102,11 +103,59 @@ class _Datasheets(_attributeClass):
                     
             allResults.append(scoopedResults)
             
+        # Returning
+
         if returnDataFrame:
             return concat(allResults, ignore_index = True)
 
         else:
             return _joinListsOrNone(*allResults)
+
+    def _retrievePlotData(self,
+                            resultName:str, # A single one
+                            locationGroup:str, # For that result name
+                            chipTypes = None,
+                            chipGroupsDict:dict = None,
+                            requiredTags:list = None,
+                            tagsToExclude:list = None,
+                            locations:list = None,
+                            *,
+                            returnDataFrame:bool = False,
+                            datasheetIndex:int = None,
+                        ):
+        
+
+        cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
+
+        for label in cmpLabels:
+            
+            chip = self._obj._allComponentsDict[label]
+            bp = self._obj._allComponentBPdict[label]
+
+            # Retrieving locations
+            locDict = bp.Locations.retrieveGroupsDict()
+            
+            if locDict is None:
+                log.warning(f'Could not retrieve locations for chip "{chip.name}".')
+                continue
+
+            locations = locDict.get(locationGroup)
+
+            if locations is None:
+                log.warning(f'Could not retrieve locations for chip "{chip.name}".')
+                continue
+                
+            scooped = chip.Datasheet.retrieveData(
+                [resultName],
+                requiredTags,
+                tagsToExclude,
+                locations,
+                returnDataFrame = returnDataFrame,
+                datasheetIndex = datasheetIndex,
+                verbose = False)
+
+
+        
 
     def retrieveAveragedData(self,
             resultName:str,
@@ -202,6 +251,11 @@ class _Datasheets(_attributeClass):
             chipTypes = chipType_orTypes
 
         log.debug(f'[plotResults] chipTypes: {chipTypes}')
+
+        
+
+        # I first determine the locations available for each chip type.
+
 
         dataDict = self.retrieveData(
             resultName,
