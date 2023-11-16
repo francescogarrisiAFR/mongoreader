@@ -1097,6 +1097,7 @@ class waferCollation(c.collation):
             requiredTestReportID = None,
             *,
             returnType:str = 'dictionary',
+            averageDataDictionary:bool = False,
             verbose:bool = True,
     ):
         """Internal method to scoop results from the test history of wafer
@@ -1426,9 +1427,9 @@ class waferCollation(c.collation):
                 colorDict = colorDict,
                 title = title)
     
-    def _instanciateDataDict(self, chipLabels:list, locationGroup:str):
+    def _instanciateDataDict_subChipScale(self, chipLabels:list, locationGroup:str):
         """Generates an empty dataDictionary (sub-chip scale)."""
-        
+
         if not isListOfStrings(chipLabels):
             raise TypeError('"chipLabels" must be a list of strings.')
         if not isinstance(locationGroup, str):
@@ -1446,10 +1447,112 @@ class waferCollation(c.collation):
 
         return dataDict
 
+    @staticmethod
+    def _instanciateDataDict_chipScale(chipLabels:list):
+        """Generates an empty dataDictionary (chip scale)."""
 
-    def plotTestResults(self,
+        if not isListOfStrings(chipLabels):
+            raise TypeError('"chipLabels" must be a list of strings.')
+       
+        dataDict = {label: None for label in chipLabels}
+
+        return dataDict
+
+
+    def _scoopDataToPlot(self,
         resultName:str = None,
         locationGroup:str = None,
+        chipType_orTypes = None,
+        chipGroupsDict:dict = None,
+        searchDatasheetData:bool = False,
+        requiredStatus_orList = None,
+        requiredProcessStage_orList = None,
+        requiredTags:list = None,
+        tagsToExclude:list = None,
+        earliestExecutionDate = None,
+        latestExecutionDate = None,
+        requiredTestReportID = None,
+        *,
+        averageData:bool = False,
+        verbose:bool = True):
+
+        def normalizeArgument(arg):
+            if arg is None: return None
+
+            if isinstance(arg, list): return arg
+
+            return [arg]
+
+        chipTypes = normalizeArgument(chipType_orTypes)
+        resultNames = normalizeArgument(resultName)
+        locationGroups = normalizeArgument(locationGroup)
+        requiredStati = normalizeArgument(requiredStatus_orList)
+        requiredProcessStages = normalizeArgument(requiredProcessStage_orList)
+
+        if chipTypes is None: chipTypes = ['chips']
+
+        # Preparations
+        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
+
+        if chipSerials is None:
+            if verbose: log.warning('No component labels identified. Nothing to plot.')
+            return None
+        
+        dataDict = self._instanciateDataDict_subChipScale(chipSerials, locationGroup)
+
+        log.debug(f'[plotTestResults] chipTypes: {chipTypes}')
+        log.debug(f'[plotTestResults] chipGroupsDict: {chipGroupsDict}')
+        log.debug(f'[plotTestResults] resultNames: {resultNames}')
+        log.debug(f'[plotTestResults] locationGroups: {locationGroups}')
+
+        scooped = self._scoopTestResults(
+                                chipTypes,
+                                chipGroupsDict,
+                                resultNames,
+                                locationGroups,
+                                searchDatasheetData,
+                                requiredStati,
+                                requiredProcessStages,
+                                requiredTags,
+                                tagsToExclude,
+                                earliestExecutionDate,
+                                latestExecutionDate,
+                                requiredTestReportID,
+                                returnType = 'dataDictionary',
+                                verbose = True,
+            
+        ) # List of dicts
+
+        if scooped is None:
+            if verbose: log.warning('No results were retrieved. Nothing to plot.')
+
+        # Populating dataDict from scooped results
+        if scooped is not None:
+            for s in scooped:
+
+                log.debug(f'Scooped: {s}')
+
+                label = s['label']
+                loc = s['location']
+                value = s['value']
+
+                if label in dataDict:
+                    if loc in dataDict[label]:
+                        
+                        if dataDict[label][loc] is not None: # A value is already present
+                            if verbose: log.warning(f'Multiple values scooped for "{label}"-"{loc}".')
+
+                        log.debug(f'Adding value to "{label}"-"{loc}": {value}')
+                        dataDict[label][loc] = value
+
+        if averageData is True:
+            dataDict = averageSubchipScaleDataDict(dataDict)
+
+        return dataDict        
+
+    def plotTestResults(self,
+        resultName,
+        locationGroup,
         chipType_orTypes = None,
         chipGroupsDict:dict = None,
         searchDatasheetData:bool = False,
@@ -1489,72 +1592,26 @@ class waferCollation(c.collation):
 
         def normalizeArgument(arg):
             if arg is None: return None
-
             if isinstance(arg, list): return arg
-
             return [arg]
 
         chipTypes = normalizeArgument(chipType_orTypes)
-        resultNames = normalizeArgument(resultName)
-        locationGroups = normalizeArgument(locationGroup)
-        requiredStati = normalizeArgument(requiredStatus_orList)
-        requiredProcessStages = normalizeArgument(requiredProcessStage_orList)
 
-        if chipTypes is None: chipTypes = ['chips']
-
-        # Preparations
-        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
-
-        if chipSerials is None:
-            if verbose: log.warning('No component labels identified. Nothing to plot.')
-            return None
-        
-        dataDict = self._instanciateDataDict(chipSerials, locationGroup)
-
-        log.debug(f'[plotTestResults] chipTypes: {chipTypes}')
-        log.debug(f'[plotTestResults] chipGroupsDict: {chipGroupsDict}')
-        log.debug(f'[plotTestResults] resultNames: {resultNames}')
-        log.debug(f'[plotTestResults] locationGroups: {locationGroups}')
-
-        scooped = self._scoopTestResults(
-                                chipTypes,
+        dataDict = self._scoopDataToPlot(
+                                resultName,
+                                locationGroup,
+                                chipType_orTypes,
                                 chipGroupsDict,
-                                resultNames,
-                                locationGroups,
                                 searchDatasheetData,
-                                requiredStati,
-                                requiredProcessStages,
+                                requiredStatus_orList,
+                                requiredProcessStage_orList,
                                 requiredTags,
                                 tagsToExclude,
                                 earliestExecutionDate,
                                 latestExecutionDate,
                                 requiredTestReportID,
-                                returnType = 'dataDictionary',
-                                verbose = True,
-            
-        ) # List of dicts
-
-        if scooped is None:
-            if verbose: log.warning('No results were retrieved. Nothing to plot.')
-        
-        # Populating dataDict from scooped results
-        if scooped is not None:
-            for s in scooped:
-
-                log.debug(f'Scooped: {s}')
-
-                label = s['label']
-                loc = s['location']
-                value = s['value']
-
-                if label in dataDict:
-                    if loc in dataDict[label]:
-                        
-                        if dataDict[label][loc] is not None: # A value is already present
-                            if verbose: log.warning(f'Multiple values scooped for "{label}"-"{loc}".')
-
-                        log.debug(f'Adding value to "{label}"-"{loc}": {value}')
-                        dataDict[label][loc] = value
+                                averageData = False,
+                                verbose = verbose)
         
         # Plotting
 
@@ -1582,11 +1639,19 @@ class waferCollation(c.collation):
 
 
     def plotAveragedTestResults(self,
-        resultName:str,
-        locationGroup:str,
+        resultName,
+        locationGroup,
         chipType_orTypes = None,
-        *,
         chipGroupsDict:dict = None,
+        searchDatasheetData:bool = False,
+        requiredStatus_orList = None,
+        requiredProcessStage_orList = None,
+        requiredTags:list = None,
+        tagsToExclude:list = None,
+        earliestExecutionDate = None,
+        latestExecutionDate = None,
+        requiredTestReportID = None,
+        *,
         colormapName:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -1599,35 +1664,53 @@ class waferCollation(c.collation):
         chipLabelsDirection:str = None,
         title:str = None,
         dpi = None,
-        **kwargs):
-        """Works like plotResults, but data is first averaged to a chip-scale
-        level."""
-        raise NotImplementedError()
+
+        verbose:bool = True,
+        ):
+        """Creates a subchip-scale plot of results present in the test history
+        of the collation components.
+
+        The results are collected using [waferCollation].retrieveTestResults().
+        See its documentation for non-keyword arguments of this method.
+        
+        The plot is generated using waferPlotter.plotData_subchipScale()
+        (defined in mongoreader/plotting/waferPlotting.py). See its
+        documentation for the keyword arguments of this method.
+        """
+
+        def normalizeArgument(arg):
+            if arg is None: return None
+            if isinstance(arg, list): return arg
+            return [arg]
+
+        chipTypes = normalizeArgument(chipType_orTypes)
+
+        dataDict = self._scoopDataToPlot(
+                                resultName,
+                                locationGroup,
+                                chipType_orTypes,
+                                chipGroupsDict,
+                                searchDatasheetData,
+                                requiredStatus_orList,
+                                requiredProcessStage_orList,
+                                requiredTags,
+                                tagsToExclude,
+                                earliestExecutionDate,
+                                latestExecutionDate,
+                                requiredTestReportID,
+                                averageData = True,
+                                verbose = verbose)
+        
+        # Plotting
 
         plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
-    
-        if chipType_orTypes is None:
-            chipTypes = ['chips']
-        elif not isinstance(chipType_orTypes, list):
-            chipTypes = [chipType_orTypes]
-        else:
-            chipTypes = chipType_orTypes
 
+        if title is None: title = resultName
 
-        dataDict = self.retrieveAveragedTestData(
-            resultName,
-            chipType_orTypes,
-            chipGroupsDict,
-            locationGroup,
-            **kwargs
-        )
-
-        if title is None: title = resultName + ' (Averaged)'
-
-        plt.plotData_chipScale(dataDict,
-            title = title,
+        return plt.plotData_chipScale(dataDict,
             chipTypes = chipTypes,
             chipGroupsDict = chipGroupsDict,
+            title = title,
             NoneColor = NoneColor,
             colormapName=colormapName,
             dataRangeMin = dataRangeMin,
@@ -1641,8 +1724,6 @@ class waferCollation(c.collation):
             chipLabelsDirection = chipLabelsDirection,
             dpi = dpi,
             )
-
-        return dataDict
 
 
 
