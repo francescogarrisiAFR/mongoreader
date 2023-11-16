@@ -1,6 +1,7 @@
 import mongomanager as mom
 from mongomanager import log
 from mongomanager.goggleFunctions import componentGoggleFunctions as cmpGoggles
+from mongomanager.errors import isListOfStrings
 # import mongomanager.info as i
 import mongoreader.core as c
 import mongoreader.errors as e
@@ -1030,8 +1031,8 @@ class waferCollation(c.collation):
         if chipGroupsDict is None:
             chipGroupsDict = {chipType: None for chipType in chipTypes}
 
-        log.debug(f'chipTypes: {chipTypes}')
-        log.debug(f'chipGroupsDict: {chipGroupsDict}')
+        log.debug(f'[_selectLabels] chipTypes: {chipTypes}')
+        log.debug(f'[_selectLabels] chipGroupsDict: {chipGroupsDict}')
 
         for chipType, chipGroups in chipGroupsDict.items():
 
@@ -1039,7 +1040,7 @@ class waferCollation(c.collation):
 
             if chipGroups is None:
                 newLabels = attributeClass.retrieveLabels()
-                log.debug(f'Chip groups is None: newLabels: {newLabels}')
+                log.debug(f'[_selectLabels] Chip groups is None: newLabels: {newLabels}')
                 if newLabels is None: continue
 
             else:
@@ -1048,7 +1049,7 @@ class waferCollation(c.collation):
                     newLabels = attributeClass.retrieveGroupLabels(group)
                     if newLabels is None: continue
                     chipSerials += newLabels
-                    log.debug(f'newLabels for group "{group}": {newLabels}')
+                    log.debug(f'[_selectLabels] newLabels for group "{group}": {newLabels}')
 
 
             chipSerials += newLabels
@@ -1081,22 +1082,156 @@ class waferCollation(c.collation):
         return allNames
 
 
-    def retrieveTestData(self,
-        resultName_orNames,
+    def _scoopTestResults(self,
+            chipTypes:list = None,
+            chipGroupsDict:dict = None,
+            resultNames:list = None,
+            locationGroups:list = None,
+            searchDatasheetData:bool = False,
+            requiredStati:list = None,
+            requiredProcessStages:list = None,
+            requiredTags:list = None,
+            tagsToExclude:list = None,
+            earliestExecutionDate = None,
+            latestExecutionDate = None,
+            requiredTestReportID = None,
+            *,
+            returnType:str = 'dictionary',
+            verbose:bool = True,
+    ):
+        """Internal method to scoop results from the test history of wafer
+        compoents.
+        
+        Results are formatted in different ways depending on the value of
+        "returnType". For other methods see
+        mongomanager
+            └ goggleFunctions
+                └ componentGoggleFunctions
+                    └ scoopComponentResults()
+        """
+
+        log.debug(f'[_scoopTestResults] chipTypes: {chipTypes}')
+        log.debug(f'[_scoopTestResults] chipGroupsDict: {chipGroupsDict}')
+        log.debug(f'[_scoopTestResults] resultNames: {resultNames}')
+        log.debug(f'[_scoopTestResults] locationGroups: {locationGroups}')
+
+        returnTypes = ['dictionary', 'DataFrame', 'testResult', 'dataDictionary']
+        returnTypesStr = ', '.join([f'"{s}"' for s in returnTypes])
+
+        if not isinstance(returnType, str):
+            raise TypeError(f'"returnType" must be a string among {returnTypesStr}')
+        if not returnType in returnTypes:
+            raise ValueError(f'"returnType" must be a string among {returnTypesStr}')
+
+        if returnType == 'dictionary':
+            scoopReturnType = 'dictionary'
+        elif returnType == 'DataFrame':
+            scoopReturnType = 'DataFrameDictionary'
+        elif returnType == 'testResult':
+            scoopReturnType = 'testResult'
+        elif returnType == 'dataDictionary':
+            scoopReturnType = 'DataFrameDictionary'
+
+        # Determining chip serials to be considered
+        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
+
+        if chipSerials is None:
+            if verbose: mom.log.warning(f'No chip serials have been determined!')
+            return None
+        
+        # Location groups to location lists
+        locationDict = {}
+
+        if locationGroups is None:
+            locationDict = {serial: None for serial in chipSerials}
+        else:
+            for serial in chipSerials:
+                locationDict[serial] = []
+                bp = self._allComponentBPdict[serial]
+
+                for locGroup in locationGroups:
+                    locNames = bp.Locations.retrieveGroupElements(locGroup, verbose = False)
+                    if locNames is not None:
+                        locationDict[serial] += locNames
+
+        allScooped = []
+        for serial in chipSerials:
+
+            cmp = self._allComponentsDict[serial]
+
+            scooped = cmpGoggles.scoopComponentResults(
+                            self._allComponentsDict[serial],
+                            resultNames,
+                            locationDict[serial], # All location names
+                            searchDatasheetData,
+                            requiredStati,
+                            requiredProcessStages,
+                            requiredTags,
+                            tagsToExclude,
+                            earliestExecutionDate,
+                            latestExecutionDate,
+                            requiredTestReportID,
+                            returnType = scoopReturnType)
+            
+            if scooped is None: continue
+
+            if returnType == 'dataDictionary':
+                for s in scooped:
+                    minimal = {
+                        'label': serial,
+                        'value': s.get('resultValue'),
+                        'location': s.get('location'),
+                    }
+                    allScooped.append(minimal)
+                continue
+            
+            additional = {'wafer': self.wafer.name,
+                          'componentName': cmp.name,
+                          'componentID': cmp.ID,
+                          'label': serial}
+            
+            for s in scooped:
+                complete = {**additional, **s}
+                allScooped.append(complete)
+            # Adding wafer-scale information
+
+        if returnType == 'dictionary':
+            return allScooped
+        elif returnType == 'DataFrame':
+            return DataFrame([s for s in allScooped])
+        elif returnType == 'testResult':
+            return allScooped
+        elif returnType == 'dataDictionary':
+            return allScooped
+        
+        else:
+            raise Exception('Nothing to return. Check returnType!')
+
+    def retrieveTestResults(self,
+        resultName_orNames = None,
+        locationGroup_orGroups = None,
         chipType_orTypes = None,
         chipGroupsDict:dict = None,
-        locationGroup_orGroups = None,
         searchDatasheetData:bool = False,
         requiredStatus_orList = None,
         requiredProcessStage_orList = None,
         requiredTags:list = None,
-        tagsToExclude:list = None) -> dict:
-        """Returns a dictionary containing results collected from the wafer
-        collation.
+        tagsToExclude:list = None,
+        earliestExecutionDate = None,
+        latestExecutionDate = None,
+        requiredTestReportID = None,
+        *,
+        returnDataFrame:bool = False,
+        verbose:bool = True):
+        """Returns results collected from the test history of components of the
+        wafer collation.
 
         Args:
-            resultName_orNames (str | List[str]): The name(s) of the result(s)
-                to be collected.
+            resultName_orNames (str | List[str], optional): If passed, result(s)
+                whose name is not listed here are ignored.
+            locationGroup_orGroups (str | List[str], optional): If passed,
+                results whose location is not among correponding to these
+                location groups are ignored.
             chipType_orTypes (str | List[str]): Pass any of the following
                 strings or a list of them to select which wafer components are
                 considered: "chips", "testChips", "bars", "testCells".
@@ -1108,76 +1243,71 @@ class waferCollation(c.collation):
                     <chipType2>: <list of groups for chipType2>,
                     ...
                 }
-                Not all <chipType1> must be present within the dictionary.
-
-        For each chip, results are collected using the function 
-        "scoopComponentResults" (defined in mongoreader/goggleFunctions.py).
-        See its documentation for the meaning of arguments not listed below."""
-
-        if not isinstance(locationGroup_orGroups, list):
-            locationGroups = [locationGroup_orGroups]
-        else:
-            locationGroups = locationGroup_orGroups
-
-
-        if chipType_orTypes is None:
-            chipTypes = ['chips']
-        else:
-            if isinstance(chipType_orTypes, list):
-                chipTypes = chipType_orTypes
-            else:
-                chipTypes = [chipType_orTypes]
+                Not all chip type must be present within the dictionary. If
+                they are not, all the chips for that group are considered.
+            searchDatasheetData (bool, optional): If True, only results for
+                which "datasheetReady" = True are collected. Defaults to False.
+            requiredStatus_orList (str | List[str]): If passed, only results
+                for which the chip status was among these are collected.
+            requiredProcessStage_orList (str | List[str]): If passed, only
+                results for which the chip processStage was among these are
+                collected.
+            requiredTags (list, optional): If passed, results tags must contain
+                those listed here to be collected.
+            tagsToExclude (list, optional): If passed, results whose tags are
+                among these are not collected. Defaults to None.
+            earliestExecutionDate (aware datetime object, optional): If passed,
+                only results generated after this date are collected.
+            latestExecutionDate (aware datetime object, optional): If passed,
+                only results generated before this date are collected.
+            requiredTestReportID (ID, optional): If passed, only results whose
+                testReportID is equal to this are collected.
+        
                 
-
-        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
+        Keyword Args:
+            returnDataFrame (bool, optional): If True, data are returned as
+                a pandas DataFrame. Defaults to False
+            verbose (bool, optional): If False, warning messages are suppressed.
+                Defaults to True.
         
-        if chipSerials is None:
-            mom.log.warning(f'No chip serials have been determined!')
-            return None
+        Returns:
+            List[dict] | DataFrame | None
+        """
+
+        def normalizeArgument(arg):
+            if arg is None: return None
+
+            if isinstance(arg, list): return arg
+
+            return [arg]
+
+        chipTypes = normalizeArgument(chipType_orTypes)
+        resultNames = normalizeArgument(resultName_orNames)
+        locationGroups = normalizeArgument(locationGroup_orGroups)
+        requiredStati = normalizeArgument(requiredStatus_orList)
+        requiredProcessStages = normalizeArgument(requiredProcessStage_orList)
         
-        locationDict = {}
-        for serial in chipSerials:
-            locationDict[serial] = []
-            bp = self._allComponentBPdict[serial]
+        if chipTypes is None: chipTypes = ['chips']
 
-            for locGroup in locationGroups:
-                locNames = bp.Locations.retrieveGroupElements(locGroup)
-                if locNames is not None:
-                    locationDict[serial] += locNames
-
-        if isinstance(resultName_orNames, str):
-            resultNames = [resultName_orNames]
+        if returnDataFrame:
+            returnType = 'DataFrame'
         else:
-            resultNames = resultName_orNames
-        
-        returnDict = {resName: {serial: None for serial in chipSerials}
-                        for resName in resultNames}
+            returnType = 'dictionary'
 
-        for serial in chipSerials:
-            goggled = cmpGoggles.scoopComponentResults(
-                            self._allComponentsDict[serial],
-                            resultNames,
-                            locationDict[serial], # All location names
-                            searchDatasheetData,
-                            requiredStatus_orList,
-                            requiredProcessStage_orList,
-                            requiredTags,
-                            tagsToExclude)
-
-            # goggled is in the form
-            # {
-            #       <resultName1>: {<loc1>: <data1>,  <loc2>: <data2>, ...},
-            #       <resultName2>: {<loc1>: <data1>,  <loc2>: <data2>, ...},     
-            #       ...
-            # }
-            
-            for goggledResName, dataDict in goggled.items():
-                returnDict[goggledResName][serial] = dataDict
-        
-        if isinstance(resultName_orNames, str):
-            return returnDict[resultName_orNames]
-        else:
-            return returnDict
+        return self._scoopTestResults(chipTypes,
+                                      chipGroupsDict,
+                                      resultNames,
+                                      locationGroups,
+                                      searchDatasheetData,
+                                      requiredStati,
+                                      requiredProcessStages,
+                                      requiredTags,
+                                      tagsToExclude,
+                                      earliestExecutionDate,
+                                      latestExecutionDate,
+                                      requiredTestReportID,
+                                      returnType = returnType,
+                                      verbose = verbose)
 
 
     def retrieveAveragedTestData(self,
@@ -1192,6 +1322,7 @@ class waferCollation(c.collation):
         tagsToExclude:list = None) -> dict:
         """Works like .retrieveTestData, but values are averaged to the chip-scale
             level."""
+        raise NotImplementedError()
 
         dataDict_subchip = self.retrieveTestData(resultName_orNames,
             chipType_orTypes,
@@ -1295,14 +1426,41 @@ class waferCollation(c.collation):
                 colorDict = colorDict,
                 title = title)
     
+    def _instanciateDataDict(self, chipLabels:list, locationGroup:str):
+        """Generates an empty dataDictionary (sub-chip scale)."""
+        
+        if not isListOfStrings(chipLabels):
+            raise TypeError('"chipLabels" must be a list of strings.')
+        if not isinstance(locationGroup, str):
+            raise TypeError('"locationGroup" must be a string.')
+
+        dataDict = {label: None for label in chipLabels}
+
+        for label in chipLabels:
+
+            bp = self._allComponentBPdict[label]
+
+            locNames = bp.Locations.retrieveGroupElements(locationGroup, verbose = False)
+            if locNames is not None:
+                dataDict[label] = {loc: None for loc in locNames}
+
+        return dataDict
 
 
     def plotTestResults(self,
-        resultName:str,
-        locationGroup:str,
+        resultName:str = None,
+        locationGroup:str = None,
         chipType_orTypes = None,
-        *,
         chipGroupsDict:dict = None,
+        searchDatasheetData:bool = False,
+        requiredStatus_orList = None,
+        requiredProcessStage_orList = None,
+        requiredTags:list = None,
+        tagsToExclude:list = None,
+        earliestExecutionDate = None,
+        latestExecutionDate = None,
+        requiredTestReportID = None,
+        *,
         colormapName:str = None,
         dataRangeMin:float = None,
         dataRangeMax:float = None,
@@ -1315,69 +1473,96 @@ class waferCollation(c.collation):
         chipLabelsDirection:str = None,
         title:str = None,
         dpi = None,
-        **kwargs
+
+        verbose:bool = True,
         ):
-        """Creates a subchip-scale plot of given results.
+        """Creates a subchip-scale plot of results present in the test history
+        of the collation components.
+
+        The results are collected using [waferCollation].retrieveTestResults().
+        See its documentation for non-keyword arguments of this method.
         
-        For more info on not-listed arguments see waferPlotter.plotData_subchipScale()
-        (defined in mongoreader/plotting/waferPlotting.py)
-
-        Args:
-            resultName (str): The name of the result to be plotted.
-            locationGroup (str): The location name associated to the results.
-            chipType_orTypes (str | List[str]): Pass any of the following
-                strings or a list of them to select which wafer components are
-                considered: "chips", "testChips", "bars", "testCells".
-                Defaults to "chips".
-            
-
-        Keyword arguments (**kwargs):
-            chipGroupsDict (dict, optional): If passed, it can be used to filter
-                which group for each chipType is plotted. Pass it in the form
-                {
-                    <chipType1>: <list of groups for chipType1>,
-                    <chipType2>: <list of groups for chipType2>,
-                    ...
-                }
-                Not all <chipType1> must be present within the dictionary.
-            searchDatasheetReady (bool, optional): If True, only results that
-                have the field "datasheetReady" set to True are scooped.
-                If "datasheetReady" is False or missing, the result is ignored.
-                Defaults to True.
-            requiredStatus (str, optional): If passed, only test entries whose
-                "status" field is equal to requiredStatus are considered.
-                Defaults to None.
-            requiredProcessStage (str, optional): If passed, only test entries
-                whose "processStage" field is equal to requiredStatus are
-                considered. Defaults to None.
-            requiredTags (list[str], optional): If passed, results which lack
-                the tags listed here are ignored. Defaults to None.
-            tagsToExclude (list[str], optional): If passed, results that have
-                tags listed here are ignored. Defaults to None.
+        The plot is generated using waferPlotter.plotData_subchipScale()
+        (defined in mongoreader/plotting/waferPlotting.py). See its
+        documentation for the keyword arguments of this method.
         """
 
-        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
-    
-        if chipType_orTypes is None:
-            chipTypes = ['chips']
-        elif not isinstance(chipType_orTypes, list):
-            chipTypes = [chipType_orTypes]
-        else:
-            chipTypes = chipType_orTypes
+        def normalizeArgument(arg):
+            if arg is None: return None
 
-        log.debug(f'[plotResults] chipTypes: {chipTypes}')
+            if isinstance(arg, list): return arg
 
-        dataDict = self.retrieveTestData(
-            resultName,
-            chipTypes,
-            chipGroupsDict,
-            locationGroup,
-            **kwargs
-        )
+            return [arg]
+
+        chipTypes = normalizeArgument(chipType_orTypes)
+        resultNames = normalizeArgument(resultName)
+        locationGroups = normalizeArgument(locationGroup)
+        requiredStati = normalizeArgument(requiredStatus_orList)
+        requiredProcessStages = normalizeArgument(requiredProcessStage_orList)
+
+        if chipTypes is None: chipTypes = ['chips']
+
+        # Preparations
+        chipSerials = self._selectLabels(chipTypes, chipGroupsDict)
+
+        if chipSerials is None:
+            if verbose: log.warning('No component labels identified. Nothing to plot.')
+            return None
         
+        dataDict = self._instanciateDataDict(chipSerials, locationGroup)
+
+        log.debug(f'[plotTestResults] chipTypes: {chipTypes}')
+        log.debug(f'[plotTestResults] chipGroupsDict: {chipGroupsDict}')
+        log.debug(f'[plotTestResults] resultNames: {resultNames}')
+        log.debug(f'[plotTestResults] locationGroups: {locationGroups}')
+
+        scooped = self._scoopTestResults(
+                                chipTypes,
+                                chipGroupsDict,
+                                resultNames,
+                                locationGroups,
+                                searchDatasheetData,
+                                requiredStati,
+                                requiredProcessStages,
+                                requiredTags,
+                                tagsToExclude,
+                                earliestExecutionDate,
+                                latestExecutionDate,
+                                requiredTestReportID,
+                                returnType = 'dataDictionary',
+                                verbose = True,
+            
+        ) # List of dicts
+
+        if scooped is None:
+            if verbose: log.warning('No results were retrieved. Nothing to plot.')
+        
+        # Populating dataDict from scooped results
+        if scooped is not None:
+            for s in scooped:
+
+                log.debug(f'Scooped: {s}')
+
+                label = s['label']
+                loc = s['location']
+                value = s['value']
+
+                if label in dataDict:
+                    if loc in dataDict[label]:
+                        
+                        if dataDict[label][loc] is not None: # A value is already present
+                            if verbose: log.warning(f'Multiple values scooped for "{label}"-"{loc}".')
+
+                        log.debug(f'Adding value to "{label}"-"{loc}": {value}')
+                        dataDict[label][loc] = value
+        
+        # Plotting
+
+        plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
+
         if title is None: title = resultName
 
-        plt.plotData_subchipScale(dataDict,
+        return plt.plotData_subchipScale(dataDict,
             chipTypes = chipTypes,
             chipGroupsDict = chipGroupsDict,
             title = title,
@@ -1394,8 +1579,6 @@ class waferCollation(c.collation):
             chipLabelsDirection = chipLabelsDirection,
             dpi = dpi,
             )
-
-        return dataDict
 
 
     def plotAveragedTestResults(self,
@@ -1419,6 +1602,7 @@ class waferCollation(c.collation):
         **kwargs):
         """Works like plotResults, but data is first averaged to a chip-scale
         level."""
+        raise NotImplementedError()
 
         plt = wplt.waferPlotter(self.connection, self.waferBlueprint)
     
