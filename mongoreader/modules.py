@@ -5,7 +5,7 @@ import mongoreader.core as c
 import mongoreader.errors as e
 
 
-def queryModuleNames(conn, *strings, printNames:bool = True) -> list:
+def queryModuleNames(conn, *strings, batch:str = None, printNames:bool = True) -> list:
     """Queries and prints on console the components which conain "module" and
     any other "string" in their name (case insensitive) in their name.
 
@@ -15,7 +15,9 @@ def queryModuleNames(conn, *strings, printNames:bool = True) -> list:
     strings = ['module'] + [s for s in strings]
 
     query = qu.regex('name', strings, caseSensitive=False)
-
+    if batch is not None:
+        query['batch'] = batch
+        
     cmps = mom.component.query(conn, query, projection={'name': 1, '_id': 1}, returnType='dictionary')
 
     names = []
@@ -37,8 +39,6 @@ def queryModuleNames(conn, *strings, printNames:bool = True) -> list:
     return names
 
 
-
-
 class moduleCollation(c.collation):
     
     def __init__(self, connection:mom.connection, module,
@@ -50,6 +50,7 @@ class moduleCollation(c.collation):
                  COSblueprintValidationCriterion:callable = None,
                  chipValidationCriterion:callable= None,
                  chipBlueprintValidationCriterion:callable = None,
+                 collectBlueprints:bool = True,
                  ):
         """Initialization method for the moduleCollation class.
 
@@ -113,7 +114,8 @@ class moduleCollation(c.collation):
                             COSblueprintValidationCriterion,
                             chipValidationCriterion,
                             chipBlueprintValidationCriterion,
-                            moduleRegexSearch)
+                            moduleRegexSearch,
+                            collectBlueprints)
 
     def __repr__(self):
 
@@ -134,7 +136,8 @@ class moduleCollation(c.collation):
                             COSblueprintValidationCriterion,
                             chipValidationCriterion,
                             chipBlueprintValidationCriterion,
-                            moduleRegexSearch:bool = True):
+                            moduleRegexSearch:bool = True,
+                            collectBlueprints:bool = True):
         """Collects all the components and blueprints associated to the module.
 
         Args:
@@ -158,17 +161,25 @@ class moduleCollation(c.collation):
                                             self.COS,
                                             chipValidationCriterion)
                 
-                self.moduleBlueprint = self._collectModuleBlueprint(connection,
-                                            self.module,
-                                            moduleBlueprintValidationCriterion)
-                
-                self.COSblueprint = self._collectCOSblueprint(connection,
-                                    self.COS,
-                                    COSblueprintValidationCriterion)
+                if collectBlueprints is False:
 
-                self.chipBlueprint = self._collectChipBlueprint(connection,
-                                    self.chip,
-                                    chipBlueprintValidationCriterion)
+                    self.moduleBlueprint = None
+                    self.COSblueprint = None
+                    self.chipBlueprint = None
+
+                else:
+                            
+                    self.moduleBlueprint = self._collectModuleBlueprint(connection,
+                                                self.module,
+                                                moduleBlueprintValidationCriterion)
+                    
+                    self.COSblueprint = self._collectCOSblueprint(connection,
+                                        self.COS,
+                                        COSblueprintValidationCriterion)
+
+                    self.chipBlueprint = self._collectChipBlueprint(connection,
+                                        self.chip,
+                                        chipBlueprintValidationCriterion)
 
         mom.log.info(f'Collected documents.')
         
@@ -223,7 +234,7 @@ class moduleCollation(c.collation):
             else:
                 query = {'name': module}
             
-            mod = mom.component.queryOne(connection, query, returnType='component')
+            mod = mom.component.queryOne(connection, query, returnType='component', verbose = False)
             
             if mod is None:
                 raise mom.DocumentNotFound(f'Could not query module "{module}".')
@@ -548,5 +559,175 @@ class moduleCollation(c.collation):
     # --- other methods ---
 
     pass
+
+
+class moduleBatch:
+
+    def __init__(self, connection, batch:str, regexStrings:str = None):
+
+        self._modules = None
+        self._moduleCollations = None
+
+        self._modules, self._moduleCollations = \
+            self._collectComponents(connection, batch, regexStrings)
+        
+        self._COSs = [mc.COS for mc in self._moduleCollations]
+        self._chips = [mc.chip for mc in self._moduleCollations]
+
+        mom.log.important(f'Collected {self._countList(self._modules)} modules')
+        mom.log.important(f'Collected {self._countList(self._COSs)} COSs')
+        mom.log.important(f'Collected {self._countList(self._chips)} chips')
+
+
+    @staticmethod
+    def _countList(l):
+        """Counts the non-None elements in a list."""
+
+        if l is None: return 0
+
+        counted = [el for el in l if el is not None]
+        return len(counted)
+
+
+    
+    @property
+    def modules(self):
+        return self._modules
+    
+    @property
+    def COSs(self):
+        return self._COSs
+    
+    @property
+    def chips(self):
+        return self._chips
+
+    def printModulesStatus(self):
+
+        for index, module in enumerate(self.modules):
+            nameStr = f'"{module.name}"'
+            statusStr = module.getField('status', '<No status>', verbose = None)
+            print(f'[{index:3}] {nameStr:30} :: {statusStr}')
+
+    def printModulesProcessStage(self):
+
+        for index, module in enumerate(self.modules):
+            nameStr = f'"{module.name}"'
+            statusStr = module.getField('processStage', '<No proc. stage>', verbose = None)
+            print(f'[{index:3}] {nameStr:30} :: {statusStr}')
+
+
+    @staticmethod
+    def _cmpDashboardString(cmp):
+
+        if cmp is None:
+            IDstr = f'ID: {"--":^24}'
+            nameStr = '    --'
+            statusString = '    --'
+            stageString = '    --'
+            string = f'({IDstr:28}) {nameStr:40} :: {statusString:30} :: {stageString:30}'
+            return string
+        
+        IDstr = f'ID: {cmp.ID}'
+
+        nameStr = f'"{cmp.getField("name", "<No name>", verbose = False)}"'
+        inds = cmp.indicatorsString()
+        if inds is not None: nameStr += f' ({inds})'
+       
+        status = cmp.getField('status', '<No status>', verbose = False)
+        statusString = f'status: "{status}"'
+       
+        processStage = cmp.getField('processStage', '<No proc. stage>', verbose = False)
+        stageString = f'processStage: "{processStage}"'
+
+
+        string = f'({IDstr}) {nameStr:40} :: {statusString:30} :: {stageString:30}'
+        return string
+
+
+    def printModulesDashboard(self):
+
+        print('Modules Dashboard')
+        for index, mod in enumerate(self.modules):
+            print(f'[{index:3}] ' + self._cmpDashboardString(mod))
+
+    def printCOSsDashboard(self):
+
+        print('COSs Dashboard')
+        for index, COS in enumerate(self.COSs):
+            print(f'[{index:3}] ' + self._cmpDashboardString(COS))
+
+    def printChipsDashboard(self):
+
+        print('Chips Dashboard')
+        for index, chip in enumerate(self.chips):
+            print(f'[{index:3}] ' + self._cmpDashboardString(chip))
+
+
+    def printDashboard(self,
+                       printModules:bool = True,
+                       printCOSs:bool = False,
+                       printChips:bool = True):
+
+        if printModules: self.printModulesDashboard()
+        if printCOSs: self.printCOSsDashboard()
+        if printChips: self.printChipsDashboard()
+
+
+    def _collectComponents(self, connection, batch, regexStrings):
+        
+        mods = self._queryModules(connection, batch, regexStrings)
+
+        if mods is None:
+            return None
+        
+        with mom.opened(connection):
+            with mom.logMode(log, 'WARNING'):
+                modCollations = [moduleCollation(connection, mod,
+                                    collectBlueprints = False) for mod in mods]
+
+        # Check module blueprints
+
+        # Check COS blueprints
+
+        # Check chip blueprints
+
+        return mods, modCollations
+
+    @staticmethod
+    def _queryModules(connection, batch:str = None, regexStrings:list = None):
+        """Queries the component's database for modules given their batch and
+        a series of regex strings for their name."""
+
+        if batch is None and regexStrings is None:
+            raise TypeError(f'"batch" and "regexStrings" cannot be both None.')
+
+        if regexStrings is not None:
+            if not (isinstance(regexStrings, list) and 
+                all([isinstance(s, str) for s in regexStrings])):
+                raise TypeError('"regexStrings" must be a list of strings or None.')
+        
+        if batch is not None:
+            if not isinstance(batch, str):
+                raise TypeError('"batch" must be a string or None.')
+
+        batchQuery = {'batch': batch} if batch is not None else None
+        stringsQuery = qu.regex('name', regexStrings) if regexStrings is not None else None
+
+        if batchQuery is None: query = stringsQuery
+        elif stringsQuery is None: query = batchQuery
+        else:
+            query = qu.andPattern([batchQuery, stringsQuery])
+
+        mods = mom.component.query(connection, query, verbose = False)
+
+        if mods is None:
+            log.warning('Could not retrieve modules.')
+            return None
+        
+        log.spare(f'Query returned {len(mods)} modules.')
+        return mods
+
+
 
 
