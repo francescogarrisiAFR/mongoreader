@@ -1,29 +1,15 @@
-image: ubuntu-afr-builder
+include:
+  - project: devops/devops-ci-templates
+    file: templates/gitlab-ci-documentation.yml
+  - project: devops/devops-ci-templates
+    file: templates/gitlab-ci-pypi.yml
 
 stages:
   - build-doc
   - build-package
 
 build-documentation:
-  stage: build-doc
-  script:
+  before_script:
     - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/datautils.git
     - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/mongoutils.git
     - pip install git+http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.fiber-resources.com/mongodb/mongomanager.git
-    - export PYTHONPATH=$PYTHONPATH:$(pwd)
-    - sphinx-build docs _build -b html
-    - rm -rf /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
-    - mkdir -p /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
-    - cp -r _build/*  /artifacts/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME/.
-  tags:
-    - docker
-
-build-package:
-  stage: build-package
-  script:
-    - python -m build
-    - python -m twine upload --repository-url http://pypi.fiber-resources.com ./dist/*
-  only:
-    - tags
-  tags:
-    - docker
