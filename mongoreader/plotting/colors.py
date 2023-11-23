@@ -10,7 +10,7 @@ from matplotlib.pyplot import get_cmap
 from mongomanager import log
 
 DEFAULT_NONE_COLOR = (0.8,0.8,0.8,1)
-
+DEFAULT_WRONGDATATYPE_COLOR = (1,0,1,1) # Purple
 
 class color:
 
@@ -67,30 +67,44 @@ class color:
         return (self.r, self.g, self.b, self.a)
         
 
-def boolColor(data:bool, TrueColor = 'Red', FalseColor = 'Blue', NoneColor = None):
+def boolColor(data:bool, TrueColor = 'Red', FalseColor = 'Blue',
+              NoneColor = None,
+              wrongDataTypeColor = None):
 
     if NoneColor is None:
         NoneColor = DEFAULT_NONE_COLOR
 
-    if data is not None:
-        if not isinstance(data, bool):
-            raise TypeError('"data" must be a boolean or None.')
+    if wrongDataTypeColor is None:
+        wrongDataTypeColor = DEFAULT_WRONGDATATYPE_COLOR
 
     if data is None:
         return NoneColor
+
+    if not isinstance(data, bool):
+        return wrongDataTypeColor
+
     else:
         if data is True:
             return TrueColor
         else:
             return FalseColor
 
+def boolsColor(data:list, TrueColor = None, FalseColor = None,
+            NoneColor = None, wrongDataTypeColor = None):
+    
+    if not isinstance(data, list):
+        raise TypeError(f'"data" must be a list')
+    
+    return [boolColor(d) for d in data], {True: TrueColor, False: FalseColor}
 
 # Colors to float
 
 def floatColor(data:float, colormap, rangeMin:float, rangeMax:float,
     NoneColor = None,
+    wrongDataTypeColor = None,
     clipLowColor = None,
-    clipHighColor = None):
+    clipHighColor = None,
+    ):
     """Data can also be an integer.
     
     "colormap" is a matplotlib color map. See matplotlib.pyplot.get_cmap()
@@ -108,6 +122,9 @@ def floatColor(data:float, colormap, rangeMin:float, rangeMax:float,
     if NoneColor is None:
         NoneColor = DEFAULT_NONE_COLOR
 
+    if wrongDataTypeColor is None:
+        wrongDataTypeColor = DEFAULT_WRONGDATATYPE_COLOR
+
     if data is None:
         return NoneColor
 
@@ -115,7 +132,7 @@ def floatColor(data:float, colormap, rangeMin:float, rangeMax:float,
         data = float(data)
     
     elif not isinstance(data, float):
-        raise TypeError('"data" must be a float, None, or an integer.')
+        return wrongDataTypeColor
 
     if rangeMax == rangeMin:
         return colormap(data/rangeMax)
@@ -134,13 +151,17 @@ def floatColor(data:float, colormap, rangeMin:float, rangeMax:float,
 def autoFloatRanges(data:list):
     """Returns a rangeMin, rangeMax tuple given a list of float/int/None."""
 
-    def clData(data):
+    def dataCleaner(data):
         cleanData = deepcopy(data)
         while None in cleanData:
             cleanData.remove(None)
+
+        # Removes data of other types
+        cleanData = [d for d in data if isinstance(d, float) or isinstance(d, int)]
+        
         return cleanData
 
-    cleanData = clData(data)
+    cleanData = dataCleaner(data)
 
     if cleanData == []:
         rangeMin = 0.0
@@ -155,8 +176,9 @@ def floatsColors(data:list, colormapName:str = None,
     rangeMin:float = None,
     rangeMax:float = None,
     NoneColor = None,
+    wrongDataTypeColor = None,
     clipLowColor = None,
-    clipHighColor = None):
+    clipHighColor = None,):
     """Assigns colors to a list of float/int/None.
     
     Returns a list of colors followed by the min and max float values (range) used for the conversion."""
@@ -177,21 +199,18 @@ def floatsColors(data:list, colormapName:str = None,
         colormap = get_cmap(colormapName)
 
     return [floatColor(d, colormap, rangeMin, rangeMax,
-                        NoneColor, clipLowColor, clipHighColor)
+                        NoneColor, wrongDataTypeColor, clipLowColor, clipHighColor)
                                 for d in data], rangeMin, rangeMax
 
 # Colors to strings
 
-def stringColor(string:str, colorDict:dict, NoneColor = None):
+def stringColor(string:str, colorDict:dict, NoneColor = None, wrongDataTypeColor = None):
     """Returns a color associated to "string" as specified by the dictionary
     "colorDict".
 
     If string is None or if string is not found in the dict's keys, "NoneColor"
     is returned.
     """
-
-    if not isinstance(string, str):
-        raise TypeError('"string" must be a string.')
     
     if not isinstance(colorDict, dict):
         raise TypeError('"colorDict" must be a dictionary.')
@@ -199,8 +218,14 @@ def stringColor(string:str, colorDict:dict, NoneColor = None):
     if NoneColor is None:
         NoneColor = DEFAULT_NONE_COLOR
 
+    if wrongDataTypeColor is None:
+        wrongDataTypeColor = DEFAULT_WRONGDATATYPE_COLOR
+
     if string is None:
         return NoneColor
+    
+    if not isinstance(string, str):
+        return wrongDataTypeColor
     
     try:
         return colorDict[string]
@@ -224,9 +249,14 @@ def colorPalette(colormap, colorsNum, shiftIndex = 0):
 
 def stringsSetWithoutNone(strings):
     """Given a list of strings/None, it returns a set of these strings (as a
-    list of strings) with None removed."""
-                
-    stringsSet = list(set(strings))
+    list of strings) with None removed.
+    
+    Values that are not strings are removed as well."""
+    
+    if not isinstance(strings, list):
+        raise TypeError('"strings" must be a list.')
+
+    stringsSet = [s for s in strings if isinstance(s, str)]
     if None in stringsSet: stringsSet.remove(None)
     return stringsSet
 
@@ -251,8 +281,9 @@ def colorDictFromStrings(colormap, strings:list, *,
     return colorDict
 
 def stringsColors(strings:list, colormapName:str = None, NoneColor = None,
-        colorDict:dict = None, *,
-        expandColorDict:bool = True
+                    wrongDataTypeColor = None,
+                    colorDict:dict = None, *,
+                    expandColorDict:bool = True
         ):
     """Returns a list of colors given a list of strings/None at the input.
     
@@ -285,8 +316,15 @@ def stringsColors(strings:list, colormapName:str = None, NoneColor = None,
 
             colorDict = {**colorDict, **colorDictExpansion}
 
-    colorList = [colorDict[s] if s in colorDict else NoneColor
-                    for s in strings]
+    colorList = []
+    
+    for s in strings:
+        if s is None:
+            colorList.append(NoneColor)
+        elif not isinstance(s, str):
+            colorList.append(wrongDataTypeColor)
+        else:
+            colorList.append(colorDict[s])
     
     return colorList, colorDict
     
