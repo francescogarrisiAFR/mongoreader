@@ -1,5 +1,9 @@
-# mongoreader 2.0.0
-[16 November 2023 - Draft changelog]
+# mongoreader 1.0.1
+
+- Modified behaviour of `modules.datasheetDashboardDFgenerator`. Numbers are rounded to a reasonable
+number of significant digits.
+
+# mongoreader 1.0.0
 
 Various changes have been made to make the library compatible with _mongomanager_ 2.0.0, and many improvements have also been introduced, as listed below.
 

@@ -1,11 +1,12 @@
 import mongoreader.wafers as w
-from mongomanager.errors import FieldNotFound, isListOfDictionaries
-from pathlib import Path
-from pandas import DataFrame, concat
+from datautils import dataClass
+from mongomanager.errors import FieldNotFound
+from mongomanager import log
+from pandas import DataFrame
 
 
 
-def datasheetDashboardDFgenerator(connection, waferName:str) -> DataFrame:
+def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:bool = False) -> DataFrame:
 
     # Type checks
 
@@ -101,8 +102,14 @@ def datasheetDashboardDFgenerator(connection, waferName:str) -> DataFrame:
             resName = r['resultName']
             loc = r['location']
             reqTags = r['requiredTags']
+
             resValue = r['resultValue']
 
+            if allResultDigits is False: # Digits based on error
+                resError = r.get('resultError')
+                resRepr = dataClass.valueErrorRepr(resValue, resError, valueDecimalsWithNoneError=2, printErrorPart=False)
+                resValue = float(resRepr)
+            
             acronym = '_'.join([resName, loc]+reqTags)
             rowDict[acronym] = resValue
 
