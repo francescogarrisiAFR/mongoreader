@@ -105,10 +105,16 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
 
             resValue = r['resultValue']
 
-            if allResultDigits is False: # Digits based on error
+            if abs(resValue) > 10**30:
+                resValue = str(resValue)
+
+            elif allResultDigits is False: # Digits based on error
                 resError = r.get('resultError')
                 resRepr = dataClass.valueErrorRepr(resValue, resError, valueDecimalsWithNoneError=2, printErrorPart=False)
-                resValue = float(resRepr)
+                # resValue = float(resRepr)
+                resValue = resRepr # string
+            else:
+                resValue = str(resValue)
             
             acronym = '_'.join([resName, loc]+reqTags)
             rowDict[acronym] = resValue

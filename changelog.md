@@ -2,6 +2,7 @@
 
 - Modified behaviour of `modules.datasheetDashboardDFgenerator`. Numbers are rounded to a reasonable
 number of significant digits.
+- Improved visualization of number for `datasheetDashboardDFgenerator` (no scientific notation unless the number has a very large absolute value).
 
 # mongoreader 1.0.0
 
