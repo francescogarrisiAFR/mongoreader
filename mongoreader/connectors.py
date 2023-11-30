@@ -105,7 +105,7 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
 
             resValue = r['resultValue']
 
-            if abs(resValue) > 10**30:
+            if abs(resValue) > 10**9:
                 resValue = str(resValue)
 
             elif allResultDigits is False: # Digits based on error
