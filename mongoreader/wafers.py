@@ -562,7 +562,9 @@ class waferCollation(c.collation):
     def retrieveDatasheetData(self,
         resultName_orNames,
         chipGroup_orGroups,
-        locationGroup:str):
+        locationGroup:str,
+        searchDatasheetReady=True,
+        processStageList=None):
 
         if isinstance(chipGroup_orGroups, list):
             chipGroups = chipGroup_orGroups
@@ -592,7 +594,9 @@ class waferCollation(c.collation):
             goggled = chipGoggles.datasheedData(
                             self.chipsDict[serial],
                             resultNames,
-                            locationDict[serial])
+                            locationDict[serial],
+                            searchDatasheetReady=searchDatasheetReady,
+                            processStageList=processStageList)
 
             # goggled is in the form
             # {
