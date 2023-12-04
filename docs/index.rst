@@ -1,20 +1,16 @@
-
-
 Welcome to mongoReader's documentation!
 ========================================
 
-Wafer Classes
-++++++++++++++++++++++++++++++++++
-.. currentmodule:: mongoreader.wafers
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+   :numbered:
 
-Base
-===========
-
-.. autosummary::
-    :toctree: _generated/full_summary 
-    :template: classwithmethods.rst
-   
-    waferCollation
+   introduction
+   Tutorials/tutorials
+   GeneralTopics/generalTopics
+   FullAPI/fullApi
+   FullAPI/plottingAPI
 
 
 Indices and tables

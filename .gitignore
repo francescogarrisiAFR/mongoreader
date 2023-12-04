@@ -9,6 +9,7 @@ __pycache__/
 #Sphinx documentation
 docs/_generated
 docs/_build
+docs/FullAPI/_generated
 
 # Distribution / packaging
 .Python

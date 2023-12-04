@@ -163,10 +163,11 @@ class _waferPlotter:
 
         groupsDict is used to select given groups for each of the chip types,
         and is in the form:
-        {
-            <chipType1>: <list of groups | None>,
-            <chipType2>: <list of groups | None>,
-        }
+
+        >>> {
+        >>>     <chipType1>: <list of groups | None>,
+        >>>     <chipType2>: <list of groups | None>,
+        >>> }
 
         All the keys of groupsDict must be present in chipTypes. All their
         values must be present in self.allowedGroupsDict[<chipType>]. If the
@@ -416,11 +417,13 @@ class _waferPlotter:
 
         groupsDict is used to select given groups for each of the chip types,
         and is in the form:
-        {
-            <chipType1>: <list of groups | None>,
-            <chipType2>: <list of groups | None>,
-            ...
-        }
+        
+        >>> {
+        >>>     <chipType1>: <list of groups | None>,
+        >>>     <chipType2>: <list of groups | None>,
+        >>>     ...
+        >>> }
+        
         If a value is set to None, all the groups are automatically retrieved.
 
         Args:
@@ -530,11 +533,13 @@ class _waferPlotter:
         This method is used for subchip-scale data, that is when multiple
         values are associated to each chip. As such, the dataDict is expected
         to be in the form
+
         >>> {
         >>>     <label1>: {<value1>, <value2>, ...},
         >>>     <label2>: {<value1>, <value2>, ...},
         >>>     ...
         >>> }
+
         where each label can refer to any type of chip.
 
         Args:
@@ -672,6 +677,7 @@ class _waferPlotter:
         This method is used for chip-scale data, that is, when a single value
         is associated to each chip. As such, the dataDict is expected
         to be in the form
+
         >>> {
         >>>     <chipLabel1>: <value1>,
         >>>     <chipLabel2>: <value2>,
@@ -789,11 +795,13 @@ class _waferPlotter:
         described below..
 
         The dataDictionary must be in the form:
+
         >>> {
         >>>     <chipLabel1>: <data1>,
         >>>     <chipLabel1>: <data2>,
         >>>     ...
         >>> }
+
         where <chipLabel1> must be for instance "DR8-01", "02-SE", etc., while
         <dataX> can be a float, integer, string or None.
         
@@ -809,11 +817,13 @@ class _waferPlotter:
         "testCells", which selects which macro-groups are to be plotted.
 
         chipGroupsDict is a dictionary in the form
-        {
-            <chipType1>: [<group1>, <group2>, ...] | None,
-            <chipType2>: [<group1>, <group2>, ...] | None,
-            ...
-        }
+
+        >>> {
+        >>>     <chipType1>: [<group1>, <group2>, ...] | None,
+        >>>     <chipType2>: [<group1>, <group2>, ...] | None,
+        >>>     ...
+        >>> }
+
         which, for each <chipType>, selects which groups are to be plotted.
         If a value of chipGroupsDict is set to None, all the groups are
         automatically retrieved for that chipType.
@@ -1004,6 +1014,7 @@ class _waferPlotter:
         arguments, which specify the kind of data present in the dictionary.
 
         The dataDictionary must be in the form:
+
         >>> {
         >>>     <chipLabel1>: {
         >>>                 <locationLabel1>: <value1>,
@@ -1017,6 +1028,7 @@ class _waferPlotter:
         >>>             },
         >>>     ...
         >>> }
+
         where <chipLabel1> must be for instance "DR8-01", "02-SE", etc.,
         <dataX> can be a float, integer, string or None, and <locationLabelX>
         must be a location label associated to the chip (e.g. "MZ1", "MZ2",
@@ -1038,11 +1050,13 @@ class _waferPlotter:
         "testCells", which selects which macro-groups are to be plotted.
 
         chipGroupsDict is a dictionary in the form
-        {
-            <chipType1>: [<group1>, <group2>, ...] | None,
-            <chipType2>: [<group1>, <group2>, ...] | None,
-            ...
-        }
+        
+        >>> {
+        >>>     <chipType1>: [<group1>, <group2>, ...] | None,
+        >>>     <chipType2>: [<group1>, <group2>, ...] | None,
+        >>>     ...
+        >>> }
+        
         which, for each <chipType>, selects which groups are to be plotted.
         If a value of chipGroupsDict is set to None, all the groups are
         automatically retrieved for that chipType.
