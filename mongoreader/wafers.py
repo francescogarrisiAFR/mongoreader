@@ -101,7 +101,8 @@ class _Datasheets(_attributeClass):
                 more info. Defaults to None.
 
         Returns:
-            List[dict] | pandas.DataFrame: The collected results.
+            List[dict] | pandas.DataFrame | None: The collected results. Returns
+                None if no results are collected.
         """        
         
         if chipTypes is None:
@@ -146,6 +147,9 @@ class _Datasheets(_attributeClass):
             allResults.append(scoopedResults)
             
         # Returning
+
+        if allResults == []: # Nothing collected
+            return None
 
         if returnDataFrame:
             return concat(allResults, ignore_index = True)

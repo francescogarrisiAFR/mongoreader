@@ -18,6 +18,15 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
 
     def acronymsFromDSdefinition(DSdefintion, locGroupDict):
 
+        if DSdefintion is None:
+            log.warning('Datasheet Definition is None')
+            return []
+        
+        if locGroupDict is None:
+            log.warning('Locatino group Dictionary is None')
+            return []
+        
+
         acronyms = []
         for entry in DSdefintion:
             resName = entry['resultName']
@@ -51,9 +60,9 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
     DSdata = wc.Datasheets.retrieveData(returnDataFrame=True)
 
     if DSdata is None:
-        raise FieldNotFound(f'Could not retrieve datasheet data for wafer "{wc.wafer.name}".')
+        log.warning(f'Could not retrieve datasheet data for wafer "{wc.wafer.name}".')
+        return None
     
-
     # 3. For each chip I retrieve the data for a given dashboard row
     
     allChipNames = DSdata['componentName'].unique()
