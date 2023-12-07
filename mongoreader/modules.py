@@ -51,6 +51,7 @@ class moduleCollation(c.collation):
                  chipValidationCriterion:callable= None,
                  chipBlueprintValidationCriterion:callable = None,
                  collectBlueprints:bool = True,
+                 verbose:bool = True,
                  ):
         """Initialization method for the moduleCollation class.
 
@@ -115,7 +116,8 @@ class moduleCollation(c.collation):
                             chipValidationCriterion,
                             chipBlueprintValidationCriterion,
                             moduleRegexSearch,
-                            collectBlueprints)
+                            collectBlueprints,
+                            verbose = verbose)
 
     def __repr__(self):
 
@@ -137,7 +139,9 @@ class moduleCollation(c.collation):
                             chipValidationCriterion,
                             chipBlueprintValidationCriterion,
                             moduleRegexSearch:bool = True,
-                            collectBlueprints:bool = True):
+                            collectBlueprints:bool = True,
+                            *,
+                            verbose:bool = True):
         """Collects all the components and blueprints associated to the module.
 
         Args:
@@ -151,16 +155,19 @@ class moduleCollation(c.collation):
                 self.module = self._collectModule(connection,
                                             module,
                                             moduleValidationCriterion,
-                                            regex = moduleRegexSearch)
+                                            regex = moduleRegexSearch,
+                                            verbose = verbose)
                 
                 self.COS = self._collectCOS(connection,
                                             self.module,
-                                            COSvalidationCriterion)
+                                            COSvalidationCriterion,
+                                            verbose = verbose)
                 
                 self.chip = self._collectChip(connection,
                                             self.COS,
-                                            chipValidationCriterion)
-                
+                                            chipValidationCriterion,
+                                            verbose = verbose)
+
                 if collectBlueprints is False:
 
                     self.moduleBlueprint = None
@@ -171,15 +178,18 @@ class moduleCollation(c.collation):
                             
                     self.moduleBlueprint = self._collectModuleBlueprint(connection,
                                                 self.module,
-                                                moduleBlueprintValidationCriterion)
+                                                moduleBlueprintValidationCriterion,
+                                                verbose = verbose)
                     
                     self.COSblueprint = self._collectCOSblueprint(connection,
                                         self.COS,
-                                        COSblueprintValidationCriterion)
+                                        COSblueprintValidationCriterion,
+                                        verbose = verbose)
 
                     self.chipBlueprint = self._collectChipBlueprint(connection,
                                         self.chip,
-                                        chipBlueprintValidationCriterion)
+                                        chipBlueprintValidationCriterion,
+                                        verbose = verbose)
 
         mom.log.info(f'Collected documents.')
         
@@ -187,7 +197,9 @@ class moduleCollation(c.collation):
     @staticmethod
     def _collectModule(connection:mom.connection, module,
                       moduleValidationCriterion:callable = None,
-                      regex:bool = True) -> mom.component:
+                      regex:bool = True,
+                      *,
+                      verbose:bool = True) -> mom.component:
         """Import the module from the server.
 
         Args:
@@ -246,13 +258,15 @@ class moduleCollation(c.collation):
             if not moduleValidationCriterion(mod):
                 raise mom.DocumentNotFound(f'The collected module "{module.name}" did not pass the validation criterion.')
         
-        mom.log.important(f'Collected module "{mod.name}".')
+        if verbose: mom.log.important(f'Collected module "{mod.name}".')
         return mod
     
 
     @staticmethod
     def _collectCOS(connection:mom.connection, module:mom.component,
-                    COSvalidationCriterion:callable = None) -> mom.component:
+                    COSvalidationCriterion:callable = None,
+                      *,
+                      verbose:bool = True) -> mom.component:
         """Returns the COS associated to the module.
 
         It is assumed the COS is the first of the inner components of the
@@ -274,17 +288,17 @@ class moduleCollation(c.collation):
         Returns:
             mongomanager.component: The collected COS component."""
         
-        cmps = module.InnerComponents.retrieveElements(connection)
+        cmps = module.InnerComponents.retrieveElements(connection, verbose = False)
         
         if cmps is None:
-            mom.log.warning(f'Could not retrieve inner components from module "{module.name}".')
+            if verbose: mom.log.warning(f'Could not retrieve inner components from module "{module.name}".')
             return None
         
         COS = cmps[0]
 
         if COSvalidationCriterion is not None:
             if not COSvalidationCriterion(COS):
-                mom.log.warning(f'The collected COS component "{COS.name}" did not pass the validation criterion.')
+                if verbose: mom.log.warning(f'The collected COS component "{COS.name}" did not pass the validation criterion.')
                 return None
         
         mom.log.important(f'Collected COS "{COS.name}".')
@@ -293,7 +307,9 @@ class moduleCollation(c.collation):
 
     @staticmethod
     def _collectChip(connection:mom.component, COS:mom.component,
-                     chipValidationCriterion:callable = None) -> mom.component:
+                     chipValidationCriterion:callable = None,
+                      *,
+                      verbose:bool = True) -> mom.component:
         """Returns the chip associated to the COS.
 
         It is assumed the chip is the first of the inner components of the
@@ -319,17 +335,17 @@ class moduleCollation(c.collation):
             mom.log.warning('I cannot collect the chip because COS was not collected.')
             return None
 
-        cmps = COS.InnerComponents.retrieveElements(connection)
+        cmps = COS.InnerComponents.retrieveElements(connection, verbose = False)
         
         if cmps is None:
-            mom.log.warning(f'Could not retrieve inner components from COS "{COS.name}".')
+            if verbose: mom.log.warning(f'Could not retrieve inner components from COS "{COS.name}".')
             return None
         
         chip = cmps[0]
 
         if chipValidationCriterion is not None:
             if not chipValidationCriterion(COS):
-                mom.log.warning(f'The collected chip "{chip.name}" did not pass the validation criterion.')
+                if verbose: mom.log.warning(f'The collected chip "{chip.name}" did not pass the validation criterion.')
                 return None
         
         mom.log.important(f'Collected chip "{chip.name}".')
@@ -338,7 +354,9 @@ class moduleCollation(c.collation):
 
     @staticmethod
     def _collectModuleBlueprint(connection:mom.connection, module:mom.component,
-                            moduleBlueprintValidationCriterion:callable = None) -> mom.blueprint:
+                    moduleBlueprintValidationCriterion:callable = None,
+                    *,
+                    verbose:bool = True) -> mom.blueprint:
         """Returns the blueprint associated to the module.
 
         Args:
@@ -359,22 +377,24 @@ class moduleCollation(c.collation):
         """
 
         try:
-            bp = module.retrieveBlueprint(connection)
+            bp = module.retrieveBlueprint(connection, verbose = False)
         except Exception:
-            log.warning(f'Could not retrieve the blueprint associated to module "{module.name}".')
+            if verbose: log.warning(f'Could not retrieve the blueprint associated to module "{module.name}".')
             return None
     
         if moduleBlueprintValidationCriterion is not None:
             if not moduleBlueprintValidationCriterion(bp):
                 raise mom.DocumentNotFound(f'The collected module blueprint "{bp.name}" did not pass the validation criterion.')
 
-        mom.log.important(f'Collected module blueprint "{bp.name}".')
+        if verbose: mom.log.important(f'Collected module blueprint "{bp.name}".')
         return bp
     
 
     @staticmethod
     def _collectCOSblueprint(connection:mom.connection, COS:mom.component,
-                             COSblueprintValidationCriterion:callable = None) -> mom.blueprint:
+                    COSblueprintValidationCriterion:callable = None,
+                    *,
+                    verbose:bool = True) -> mom.blueprint:
         """Returns the COS blueprint associated to the COS, or None if it is
         not found or if it does not pass the validation criterion.
          
@@ -394,31 +414,33 @@ class moduleCollation(c.collation):
         """
 
         if COS is None: # Not found by _collectCOS()
-            mom.log.warning('I cannot collect the COS blueprint because the COS was not collected.')
+            if verbose: mom.log.warning('I cannot collect the COS blueprint because the COS was not collected.')
             return None
 
         try:
             bp = COS.retrieveBlueprint(connection)
         except Exception:
-            log.warning(f'Could not retrieve the blueprint associated to COS "{COS.name}".')
+            if verbose: log.warning(f'Could not retrieve the blueprint associated to COS "{COS.name}".')
             return None
         
         if bp is None:
-            log.warning(f'Could not retrieve the blueprint associated to COS "{COS.name}".')
+            if verbose: log.warning(f'Could not retrieve the blueprint associated to COS "{COS.name}".')
             return None
     
         if COSblueprintValidationCriterion is not None:
             if not COSblueprintValidationCriterion(bp):
-                log.warning(f'The collected COS blueprint "{COS.name}" did not pass the validation criterion.')
+                if verbose: log.warning(f'The collected COS blueprint "{COS.name}" did not pass the validation criterion.')
                 return None
 
-        mom.log.important(f'Collected COS blueprint "{bp.name}".')
+        if verbose: mom.log.important(f'Collected COS blueprint "{bp.name}".')
         return bp
 
 
     @staticmethod
     def _collectChipBlueprint(connection:mom.connection, chip:mom.component,
-                             chipBlueprintValidationCriterion:callable = None) \
+                    chipBlueprintValidationCriterion:callable = None,
+                    *,
+                    verbose:bool = True) \
                                 -> mom.blueprint:
         """Returns the chip blueprint associated to the chip, or None if it is
         not found or if it does not pass the validation criterion.
@@ -439,25 +461,25 @@ class moduleCollation(c.collation):
         """
 
         if chip is None: # Not found by _collectChip()
-            mom.log.warning('I cannot collect the chip blueprint because the chip was not collected.')
+            if verbose: mom.log.warning('I cannot collect the chip blueprint because the chip was not collected.')
             return None
 
         try:
             bp = chip.retrieveBlueprint(connection)
         except Exception:
-            log.warning(f'Could not retrieve the blueprint associated to chip "{chip.name}".')
+            if verbose: log.warning(f'Could not retrieve the blueprint associated to chip "{chip.name}".')
             return None
         
         if bp is None:
-            log.warning(f'Could not retrieve the blueprint associated to chip "{chip.name}".')
+            if verbose: log.warning(f'Could not retrieve the blueprint associated to chip "{chip.name}".')
             return None
     
         if chipBlueprintValidationCriterion is not None:
             if not chipBlueprintValidationCriterion(bp):
-                log.warning(f'The collected chip blueprint "{bp.name}" did not pass the validation criterion.')
+                if verbose: log.warning(f'The collected chip blueprint "{bp.name}" did not pass the validation criterion.')
                 return None
 
-        mom.log.important(f'Collected chip blueprint "{bp.name}".')
+        if verbose: mom.log.important(f'Collected chip blueprint "{bp.name}".')
         return bp
     
 
@@ -563,7 +585,9 @@ class moduleCollation(c.collation):
 
 class moduleBatch:
 
-    def __init__(self, connection, batch:str, regexStrings:str = None):
+    def __init__(self, connection, batch:str, regexStrings:str = None,
+                 *,
+                 verbose:bool = True):
 
         self._modules = None
         self._moduleCollations = None
@@ -574,18 +598,28 @@ class moduleBatch:
         self._COSs = [mc.COS for mc in self._moduleCollations]
         self._chips = [mc.chip for mc in self._moduleCollations]
 
-        mom.log.important(f'Collected {self._countList(self._modules)} modules')
-        mom.log.important(f'Collected {self._countList(self._COSs)} COSs')
-        mom.log.important(f'Collected {self._countList(self._chips)} chips')
+        if verbose:
+            mom.log.important(f'Collected {self._countList(self._modules)} modules')
+            mom.log.important(f'Collected {self._countList(self._COSs)} COSs')
+            mom.log.important(f'Collected {self._countList(self._chips)} chips')
+
+            if self._modules is not None:
+                if self._COSs is not None and len(self._COSs) != len(self._modules):
+                    log.warning(f'Collected {len(self._modules)} modules but only {len(self._COSs)} COSs.')
+            
+            if self._COSs is not None:
+                if self._chips is not None and len(self._chips) != len(self._COSs):
+                    log.warning(f'Collected {len(self._COSs)} modules but only {len(self._chips)} chips.')
 
         moduleBPs, COSbps, chipBPs = self._collectBlueprints(connection)
         self.moduleBPs = moduleBPs
         self.COSbps = COSbps
         self.chipBPs = chipBPs
 
-        mom.log.important(f'Collected {self._countList(self.moduleBPs)} module blueprints')
-        mom.log.important(f'Collected {self._countList(self.COSbps)} COS blueprints')
-        mom.log.important(f'Collected {self._countList(self.chipBPs)} chip blueprints')
+        if verbose:
+            mom.log.important(f'Collected {self._countList(self.moduleBPs)} module blueprints')
+            mom.log.important(f'Collected {self._countList(self.COSbps)} COS blueprints')
+            mom.log.important(f'Collected {self._countList(self.chipBPs)} chip blueprints')
 
 
     @staticmethod
@@ -693,7 +727,8 @@ class moduleBatch:
         with mom.opened(connection):
             with mom.logMode(log, 'WARNING'):
                 modCollations = [moduleCollation(connection, mod,
-                                    collectBlueprints = False) for mod in mods]
+                                    collectBlueprints = False,
+                                    verbose = False) for mod in mods]
         return mods, modCollations
 
     @staticmethod
@@ -726,7 +761,7 @@ class moduleBatch:
         bps = mom.query(connection, qu.among('_id', bpIDs), None,
                         mom.blueprint.defaultDatabase,
                         mom.blueprint.defaultCollection,
-                        returnType = 'Native', verbose = verbose)
+                        returnType = 'native', verbose = verbose)
 
         if bps is None:
             return None
