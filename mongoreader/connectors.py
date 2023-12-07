@@ -1,12 +1,75 @@
 import mongoreader.wafers as w
 from datautils import dataClass
 from mongomanager.errors import FieldNotFound
-from mongomanager import log
+from mongomanager import log, blueprint
 from pandas import DataFrame
 
 
 
-def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:bool = False) -> DataFrame:
+
+def acronymsFromDSdefinition(DSdefintion, locGroupDict):
+    """Generates the ".out"-like list of acronyms for a datasheet definition.
+    
+    The Datasheet Definition is a dictionary as defined in
+    monogmanager.blueprints. The "locGroupDict" dictionary assciates associates
+    location groups used in the DSdefinition to the corresponding list of
+    locations associated to it. It is typically retrived using
+
+    `blueprint.Datasheet. [CHECk]`
+
+    "locGroupDict" is in the form:
+
+    >>> {
+    >>>     <locationGroup1>: [<loc.1>, <loc.2>, ...],
+    >>>     <locationGroup2>: [<loc.1>, <loc.2>, ...],
+    >>>     <locationGroup3>: [<loc.1>, <loc.2>, ...],
+    >>>     ...
+    >>> }
+
+    Args:
+        DSdefintion (List[dict]): The datasheet definition.
+        locGroupDict (dict): The group-locations mapping dictionary.
+
+    Returns:
+        List[str]: The list of acronyms.
+    """        
+
+    acronyms = []
+    for entry in DSdefintion:
+        resName = entry['resultName']
+        locations = locGroupDict[entry['locationGroup']]
+        reqTags = entry['tagFilters']['required']
+
+        for loc in locations:
+            acronym = '_'.join([resName, loc]+reqTags)
+            acronyms.append(acronym)
+    
+    return acronyms
+
+
+def acronymsFromBlueprints(blueprints:list):
+
+    if not isinstance(blueprints, list):
+        raise TypeError(f'"blueprints" must be a list of mongomanager.blueprint objects.')
+    for bp in blueprints:
+        if not isinstance(bp, blueprint):
+            raise TypeError(f'"blueprints" must be a list of mongomanager.blueprint objects.')
+
+    for bp in blueprints:
+        DSDef = bp.getDatasheetDefinition()
+        GroupDict = bp.Locations.retrieveGroupsDict()
+        
+
+
+def moduleBatchDashboardDFgenerator(connection, waferName:str, * ,
+                                    allResultDigits:bool = False) -> DataFrame:
+    pass
+
+def waferDashboardDFgenerator() -> DataFrame:
+    pass
+
+def datasheetDashboardDFgenerator(connection, waferName:str, *,
+                                  allResultDigits:bool = False) -> DataFrame:
 
     # Type checks
 
@@ -14,21 +77,6 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
         raise TypeError('"waferName" must be a string.')
 
     wc = w.waferCollation(connection, waferName)
-
-
-    def acronymsFromDSdefinition(DSdefintion, locGroupDict):
-
-        acronyms = []
-        for entry in DSdefintion:
-            resName = entry['resultName']
-            locations = locGroupDict[entry['locationGroup']]
-            reqTags = entry['tagFilters']['required']
-
-            for loc in locations:
-                acronym = '_'.join([resName, loc]+reqTags)
-                acronyms.append(acronym)
-        
-        return acronyms
 
 
     # 1. Acronyms
@@ -51,8 +99,8 @@ def datasheetDashboardDFgenerator(connection, waferName:str, *, allResultDigits:
     DSdata = wc.Datasheets.retrieveData(returnDataFrame=True)
 
     if DSdata is None:
-        raise FieldNotFound(f'Could not retrieve datasheet data for wafer "{wc.wafer.name}".')
-    
+        log.warning(f'Could not retrieve datasheet data for wafer "{wc.wafer.name}".')
+        return None
 
     # 3. For each chip I retrieve the data for a given dashboard row
     

@@ -578,6 +578,15 @@ class moduleBatch:
         mom.log.important(f'Collected {self._countList(self._COSs)} COSs')
         mom.log.important(f'Collected {self._countList(self._chips)} chips')
 
+        moduleBPs, COSbps, chipBPs = self._collectBlueprints(connection)
+        self.moduleBPs = moduleBPs
+        self.COSbps = COSbps
+        self.chipBPs = chipBPs
+
+        mom.log.important(f'Collected {self._countList(self.moduleBPs)} module blueprints')
+        mom.log.important(f'Collected {self._countList(self.COSbps)} COS blueprints')
+        mom.log.important(f'Collected {self._countList(self.chipBPs)} chip blueprints')
+
 
     @staticmethod
     def _countList(l):
@@ -685,14 +694,128 @@ class moduleBatch:
             with mom.logMode(log, 'WARNING'):
                 modCollations = [moduleCollation(connection, mod,
                                     collectBlueprints = False) for mod in mods]
+        return mods, modCollations
 
+    @staticmethod
+    def _collectBlueprintsForGroup(connection, group:list,
+                                   *,
+                                   verbose:bool = True):
+        """Given a group of components, this method queries the database and
+        returns all the blueprints associated to them.
+
+        Args:
+            connection (mom.connection): The connection object to the MongoDB
+                server.
+            group (list[mom.component]): The list of components of which the
+                blueprints have to be retrieved.
+
+        Keyword Args:
+            verbose (bool, optional): If False, query output is suppressed.
+                Defaults to True.
+
+        Returns:
+            List[mom.blueprint] | None: The list of blueprints retrieved.
+        """        
+
+        # Selecting only component instances (None is excluded)
+        group = [cmp for cmp in group if isinstance(cmp, mom.component)]
+        bpIDs = [cmp.getField('blueprintID', verbose = False) for cmp in group]
+        bpIDs = [mom.toObjectID(ID) for ID in bpIDs if ID is not None] # Removing None
+        bpIDs = list(set(bpIDs)) # Removing duplicates
+
+        bps = mom.query(connection, qu.among('_id', bpIDs), None,
+                        mom.blueprint.defaultDatabase,
+                        mom.blueprint.defaultCollection,
+                        returnType = 'Native', verbose = verbose)
+
+        if bps is None:
+            return None
+
+        else:
+            bps = [bp for bp in bps if bp is not None]
+        
+        if bps == []:
+            return None
+        
+        return bps
+
+
+
+    def _collectBlueprints(self, connection, *,
+                           collectModuleBlueprints:bool = True,
+                           collectCOSblueprints:bool = False,
+                           collectChipBlueprints:bool = True,
+                           verbose:bool = True,
+                        ):
+        """Collects the blueprints for modules, COSs and chips.
+        It issues a warning when more than one blueprint is collected
+        for each of the cathegories.
+
+        Args:
+            connection (mom.connection): The connection object to the MongoDB
+                server.
+
+        Keyword Args:
+            collectModuleBlueprints (bool, optional): Whether to collect
+                blueprints for modules. Defaults to True.
+            collectCOSblueprints (bool, optional): Whether to collect
+                blueprints for COSs. Defaults to False.
+            collectChipBlueprints (bool, optional): Whether to collect
+                blueprints for chips. Defaults to True.
+        """        
+        
         # Check module blueprints
+        if not collectModuleBlueprints:
+            modBPs = None
+
+        else:
+            if self.modules is None:
+                if verbose: log.warning('No modules of which to collect blueprints.')
+                modBPs = None
+
+            modBPs = self._collectBlueprintsForGroup(connection, self.modules, verbose = verbose)
+            if modBPs is None:
+                if verbose: log.warning('No blueprint collected for modules.')
+            else:
+                if len(modBPs) > 1:
+                    if verbose: log.warning('More than one blueprint collected for modules.')
+                
 
         # Check COS blueprints
+        if not collectCOSblueprints:
+            COSbps = None
+        else:
+
+            if self.COSs is None:
+                if verbose: log.warning('No COSs of which to collect blueprints.')
+                COSbps = None
+
+            COSbps = self._collectBlueprintsForGroup(connection, self.COSs, verbose = verbose)
+            if COSbps is None:
+                if verbose: log.warning('No blueprint collected for COSs.')
+            else:
+                if len(COSbps) > 1:
+                    if verbose: log.warning('More than one blueprint collected for COSs.')
+
 
         # Check chip blueprints
+        if not collectChipBlueprints:
+            chipBPs = None
+        else:
+            if self.chips is None:
+                if verbose: log.warning('No chips of which to collect blueprints.')
+                chipBPs = None
 
-        return mods, modCollations
+            chipBPs = self._collectBlueprintsForGroup(connection, self.chips, verbose = verbose)
+            if chipBPs is None:
+                if verbose: log.warning('No blueprint collected for chips.')
+            else:
+                if len(chipBPs) > 1:
+                    if verbose: log.warning('More than one blueprint collected for chips.')
+        
+        return modBPs, COSbps, chipBPs
+
+
 
     @staticmethod
     def _queryModules(connection, batch:str = None, regexStrings:list = None):
