@@ -6,6 +6,7 @@ from mongomanager.errors import isListOfStrings
 import mongoreader.core as c
 import mongoreader.errors as e
 import mongoreader.plotting.waferPlotting as wplt
+import mongoreader.datasheets as ds
 
 from datautils import dataClass
 
@@ -19,33 +20,7 @@ from numpy import average
 from pandas import DataFrame, concat
 
 
-class _attributeClass:
-    def __init__(self, obj):
-        self._obj = obj
-
-    @classmethod
-    def _attributeName(cls):
-        return cls.__name__.lstrip('_')
-
-def _attributeClassDecoratorMaker(attributeClass):
-
-    assert issubclass(attributeClass, _attributeClass), '[_classAttributeDecorator] Not an _attributeClass.'
-
-    def decorator(objClass):
-
-        oldInit = getattr(objClass, '__init__')
-
-        def newInit(self, *args, **kwargs):
-            oldInit(self, *args, **kwargs)
-            setattr(self, attributeClass._attributeName(), attributeClass(self))
-
-        setattr(objClass, '__init__', newInit)
-        
-        return objClass
-
-    return decorator
-
-class _Datasheets(_attributeClass):
+class _Datasheets(ds._DatasheetsBaseClass):
     """Attribute class to apply Datasheet methods to wafer collations"""
     
 
@@ -107,43 +82,39 @@ class _Datasheets(_attributeClass):
         if chipTypes is None:
             chipTypes = ['chips']
         
-        cmpLabels = self._obj._selectLabels(chipTypes, chipGroupsDict)
+        scoopedResults = []
 
-        allResults = []
+        for chipType in chipTypes:
+            labels = self._obj._selectLabels([chipType], chipGroupsDict)
+            components = [self._obj._allComponentsDict[lab] for lab in labels]
 
-        for label in cmpLabels:
-            cmp = self._obj._allComponentsDict[label]
+            chipTypeResults = super().retrieveData(
+                    components,
+                    resultNames,
+                    requiredTags,
+                    tagsToExclude,
+                    locations,
+                    returnDataFrame = returnDataFrame,
+                    datasheetIndex = datasheetIndex)
 
-            scoopedResults = cmp.Datasheet.retrieveData(
-                        resultNames,
-                        requiredTags,
-                        tagsToExclude,
-                        locations = locations,
-                        returnDataFrame = returnDataFrame,
-                        datasheetIndex = datasheetIndex,
-                        verbose = False
-                    )
+            if chipTypeResults is not None:
+
+                # Prepending wafer-specific data                
+                waferLabels = [cmp.getField('_waferLabel', verbose = False) for cmp in components]
+
+                if returnDataFrame:
+                    scoopedResults.insert(0, "label", len(scoopedResults)*[self._obj.wafer.name])
+                    scoopedResults.insert(0, "wafer", len(scoopedResults)*[self._obj.wafer.name])
+
+                else:
+                    additionalInfo = {
+                            'wafer': self._obj.wafer.name,
+                        }
+                    scoopedResults = [{**additionalInfo, **res} for res in scoopedResults]
+                
             
-            if scoopedResults is None:
-                continue
-            
-            # Prepending chip-identifying data
+            scoopedResults.extend(chipTypeResults)
 
-            if returnDataFrame:
-                scoopedResults.insert(0, "label", len(scoopedResults)*[label])
-                scoopedResults.insert(0, "componentID", len(scoopedResults)*[cmp.ID])
-                scoopedResults.insert(0, "componentName", len(scoopedResults)*[cmp.name])
-                scoopedResults.insert(0, "wafer", len(scoopedResults)*[self._obj.wafer.name])
-            else:
-                additionalInfo = {
-                        'wafer': self._obj.wafer.name,
-                        'componentName': cmp.name,
-                        'componentID': cmp.ID,
-                        'label': label,
-                    }
-                scoopedResults = [{**additionalInfo, **res} for res in scoopedResults]
-                    
-            allResults.append(scoopedResults)
             
         # Returning
 
@@ -552,7 +523,7 @@ class _Datasheets(_attributeClass):
         return dataDict
 
 
-@_attributeClassDecoratorMaker(_Datasheets)
+@ds._attributeClassDecoratorMaker(_Datasheets)
 class waferCollation(c.collation):
     """A waferCollation is a class used to collect from the database a wafer,
     its related components (chips, test chips, bars) and their blueprints.
