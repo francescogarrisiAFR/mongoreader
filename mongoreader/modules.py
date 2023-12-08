@@ -3,6 +3,7 @@ from mongomanager import log, isID
 from mongoutils import queryUtils as qu
 import mongoreader.core as c
 import mongoreader.errors as e
+import mongoreader.datasheets as ds
 
 
 def queryModuleNames(conn, *strings, batch:str = None, printNames:bool = True) -> list:
@@ -583,12 +584,83 @@ class moduleCollation(c.collation):
     pass
 
 
+
+class _Datasheets(ds._DatasheetsBaseClass):
+    """Attribute class to apply Datasheet methods to wafer collations"""
+    
+
+    def printHelpInfo(self):
+        raise NotImplementedError('Not yet implemented.')
+
+    def retrieveData(self,
+                    resultNames:list = None,
+                    requiredTags:list = None,
+                    tagsToExclude:list = None,
+                    locations:list = None,
+                    *,
+                    returnDataFrame:bool = False,
+                    datasheetIndex:int = None,
+                ):
+        """This method can be used to retrieve data from datasheets defined
+        for the components of the module batch.
+
+        The argumetns can be used to change what results are collected, as
+        described below.
+
+        Args:
+            resultNames (list, optional): If passed, results whose name is not
+                listed here are ignored.
+            requiredTags (list, optional): If passed, results tags must contain
+                those listed here to be collected.
+            tagsToExclude (list, optional): If passed, results whose tags are
+                among these are not collected. Defaults to None.
+            locations (list, optional): If passed, the result location must be
+                among these for it to be collected. Defaults to None.
+
+        Keyword arguments (**kwargs):
+            returnDataFrame (bool, optional): If True, results are returned
+                as a pandas DataFrame instead of a list of dictionaries.
+                Defaults to False.
+            datasheetIndex (int, optional): If passed, the datasheet indexed
+                by datasheetIndex is passed. See mongomanager.component for
+                more info. Defaults to None.
+
+        Returns:
+            List[dict] | pandas.DataFrame: The collected results.
+        """        
+
+        scoopedResults = super().retrieveData(
+                self._obj.modules,
+                resultNames,
+                requiredTags,
+                tagsToExclude,
+                locations,
+                returnDataFrame = returnDataFrame,
+                datasheetIndex = datasheetIndex)
+
+        if scoopedResults is None:
+            return None
+
+        if returnDataFrame:
+            scoopedResults.insert(0, "batch", len(scoopedResults)*[self._obj.batch])
+
+        else:
+            additionalInfo = {
+                    'batch': self._obj.batch,
+                }
+            scoopedResults = [{**additionalInfo, **res} for res in scoopedResults]
+            
+        return scoopedResults
+
+
+@ds._attributeClassDecoratorMaker(_Datasheets)
 class moduleBatch:
 
     def __init__(self, connection, batch:str, regexStrings:str = None,
                  *,
                  verbose:bool = True):
 
+        self.batch = batch
         self._modules = None
         self._moduleCollations = None
 

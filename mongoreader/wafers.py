@@ -95,34 +95,36 @@ class _Datasheets(ds._DatasheetsBaseClass):
                     tagsToExclude,
                     locations,
                     returnDataFrame = returnDataFrame,
-                    datasheetIndex = datasheetIndex)
+                    datasheetIndex = datasheetIndex,
+                    includeWaferLabels=True)
 
-            if chipTypeResults is not None:
+            if chipTypeResults is None:
+                continue
 
-                # Prepending wafer-specific data                
-                waferLabels = [cmp.getField('_waferLabel', verbose = False) for cmp in components]
+            if returnDataFrame:
+                chipTypeResults.insert(0, "chipType", len(chipTypeResults)*[chipType])
+                chipTypeResults.insert(0, "wafer", len(chipTypeResults)*[self._obj.wafer.name])
 
-                if returnDataFrame:
-                    scoopedResults.insert(0, "label", len(scoopedResults)*[self._obj.wafer.name])
-                    scoopedResults.insert(0, "wafer", len(scoopedResults)*[self._obj.wafer.name])
-
-                else:
-                    additionalInfo = {
-                            'wafer': self._obj.wafer.name,
-                        }
-                    scoopedResults = [{**additionalInfo, **res} for res in scoopedResults]
+            else:
+                additionalInfo = {
+                        'wafer': self._obj.wafer.name,
+                        'chipType': chipType,
+                    }
+                chipTypeResults = [{**additionalInfo, **res} for res in chipTypeResults]
                 
             
-            scoopedResults.extend(chipTypeResults)
-
+            scoopedResults.append(chipTypeResults)
             
         # Returning
 
+        if scoopedResults == []:
+            return None
+
         if returnDataFrame:
-            return concat(allResults, ignore_index = True)
+            return concat(scoopedResults, ignore_index = True)
 
         else:
-            return _joinListsOrNone(*allResults)
+            return _joinListsOrNone(*scoopedResults)
 
     def _retrieveDatadictData(self,
                     resultName:str, # A single one

@@ -94,14 +94,18 @@ class _DatasheetsBaseClass(_attributeClass):
             
             if scoopedResults is None:
                 continue
-                    
-            allResults.append(scoopedResults)
-            
+
             if includeWaferLabels:
                 label = cmp.getField('_waferLabel', verbose = False)
+                
+                if returnDataFrame: # scoopedResults is a DataFrame
+                    scoopedResults.insert(0, "label", [label]*len(scoopedResults))
 
-                # ETC
+                else:
+                    scoopedResults = [{**{'label': label}, **s} for s in scoopedResults]
 
+            allResults.append(scoopedResults)
+            
         # Returning
 
         if returnDataFrame:
