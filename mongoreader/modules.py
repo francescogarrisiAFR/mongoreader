@@ -40,6 +40,60 @@ def queryModuleNames(conn, *strings, batch:str = None, printNames:bool = True) -
     return names
 
 
+def queryModuleBatches(connection, moduleBlueprint_orID = None,
+                       *,
+                       regexString:str = None,
+                       verbose:bool = True) -> list:
+    """Given a module blueprint or ID, this method queries the database and
+    returns the list of batches whose components blueprint is the one passed.
+
+    If the blueprint is not passed, a (long) query on all the components is
+    performed, returning all the values found for the "batch" field.
+
+    Args:
+        connection (mom.connection): The connection object to the MongoDB
+            server.
+        moduleBlueprint_orID (mom.blueprint | ID, optional): The blueprint.
+
+    Keyword Args:
+        regexString (str, optional): If passed, the collected batch strings
+            are matched against this regex pattern. Defaults to None.
+        verbose (bool): If False, logging output is suppressed. Defaults to
+            True.
+
+    Returns:
+        list[str] | None: The batches found, or None if nothing is found.
+    """
+
+    if moduleBlueprint_orID is None:
+        log.warning('No blueprint or ID passed. Querying for all batches may be slow.')
+        bpID = None
+    
+    else:# Extracting the ID from the blueprint
+        bpID = mom.classID_orID(moduleBlueprint_orID)
+
+    query = {}
+
+    if bpID is not None:
+        query['blueprintID'] = bpID
+    
+    if regexString is not None:
+        query = {**query, **qu.regex('batch', regexString)}
+
+
+    cmps = mom.component.query(connection, query,
+                                projection={'batch': 1},
+                                returnType='dictionary',
+                                verbose = verbose)
+    
+    batches = list(set([cmp.get('batch') for cmp in cmps]))
+    if None in batches: batches.remove(None)
+
+    if batches == []:
+        return None
+    
+    return batches
+
 class moduleCollation(c.collation):
     
     def __init__(self, connection:mom.connection, module,
