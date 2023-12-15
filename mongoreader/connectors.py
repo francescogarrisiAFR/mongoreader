@@ -93,7 +93,7 @@ def spawnEmptyDataFrame(columnNames:list) -> DataFrame:
         log.warning('The generated dataframe has no columns.')
         columnNames = []
 
-    return DataFrame(columns=columnNames)
+    return DataFrame(None, columns=columnNames, index = [0])
 
 
 def spawnEmptyDotOutDataframe(acronyms:list) -> DataFrame:
@@ -236,13 +236,25 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
         rowDict['earliestTestDate'] = earliestTestDate
         rowDict['latestTestDate'] = latestTestDate
 
-    dataFrame = DataFrame.from_dict({k: [v] for k, v in rowDict.items()})
+    # dataFrame = DataFrame.from_dict({k: [v] for k, v in rowDict.items()})
+    # dataFrame = DataFrame(rowDict, index=[0])
     
-    return concat([
-            emptyDotOutDataFrame,
-            dataFrame
-        ],
-        ignore_index=True)
+    componentDF = emptyDotOutDataFrame.copy()
+
+    # for key, val in rowDict.items():
+    #     if key in componentDF.columns:
+    #         componentDF[key] = val
+
+    componentDF.iloc[-1] = rowDict
+
+
+    # return concat([
+    #         emptyDotOutDataFrame,
+    #         dataFrame
+    #     ],
+    #     ignore_index=True)
+            
+    return componentDF
 
 def _retrieveComponentGroupBlueprints(connection, componentGroup:list,
                                 *,
@@ -273,7 +285,7 @@ def _retrieveComponentGroupBlueprints(connection, componentGroup:list,
     bps = mom.query(connection, qu.among('_id', bpIDs), None,
                     mom.blueprint.defaultDatabase,
                     mom.blueprint.defaultCollection,
-                    returnType = 'Native', verbose = verbose)
+                    returnType = 'native', verbose = verbose)
 
     if bps is None:
         return None
@@ -317,6 +329,8 @@ def groupedDotOutDataFrame(components:list, blueprints:list = None,
         DataFrame: The dot-out DataFrame for the components.
     """    
     
+    log.debug(f'[groupedDotOutDataFrame] no. components: {len(components)}')
+
     # I need the blueprints to generate the acronyms
     if blueprints is None:
         blueprints = _retrieveComponentGroupBlueprints(connection, components)
@@ -331,14 +345,23 @@ def groupedDotOutDataFrame(components:list, blueprints:list = None,
             newAcronyms = [acr for acr in bpAcronyms if acr not in acronyms]
             acronyms.extend(newAcronyms)
 
+    log.debug(f'[groupedDotOutDataFrame] no. acronyms: {len(acronyms)}')
+
     # I generate and concatenate the dot-out table for all the components
-    groupedDataFrame = concat([dotOutDataFrame(
+    DFs = [dotOutDataFrame(
         emptyDotOutDataFrame = spawnEmptyDotOutDataframe(acronyms),
         component = cmp,
         componentDotOutData = None, # Generated from component
         allResultDigits = allResultDigits,
         scientificNotationThreshold = scientificNotationThreshold,
-    ) for cmp in components])
+    ) for cmp in components]
+    
+    DFs = [DF for DF in DFs if DF is not None]
+    log.debug(f'[groupedDotOutDataFrame] no. non-empty: {len(DFs)}')
+    if DFs == []: return None
+
+    log.debug(f'[groupedDotOutDataFrame] DFs: {DFs}')
+    groupedDataFrame = concat(DFs)
 
     return groupedDataFrame
 
@@ -379,6 +402,7 @@ def moduleBatchDotOutDataFrame(connection, batch:str, * ,
     dataFrame = groupedDotOutDataFrame(mods, bps,
                                        allResultDigits = allResultDigits,
                                        scientificNotationThreshold = scientificNotationThreshold)
+    if dataFrame is None: return None
 
     # Adding information relative to the batch
 
