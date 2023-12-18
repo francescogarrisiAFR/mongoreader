@@ -790,53 +790,64 @@ class moduleBatch:
     def _cmpDashboardString(cmp):
 
         if cmp is None:
-            IDstr = f'ID: {"--":^24}'
-            nameStr = '    --'
-            statusString = '    --'
-            stageString = '    --'
-            string = f'({IDstr:28}) {nameStr:40} :: {statusString:30} :: {stageString:30}'
-            return string
+            IDstr = '-'
+            nameStr = '-'
+            statusString = '-'
+            stageString = '-'
         
-        IDstr = f'ID: {cmp.ID}'
+        else:
+            IDstr = f'{cmp.ID}'
 
-        nameStr = f'"{cmp.getField("name", "<No name>", verbose = False)}"'
-        inds = cmp.indicatorsString()
-        if inds is not None: nameStr += f' ({inds})'
-       
-        status = cmp.getField('status', '<No status>', verbose = False)
-        statusString = f'status: "{status}"'
-       
-        processStage = cmp.getField('processStage', '<No proc. stage>', verbose = False)
-        stageString = f'processStage: "{processStage}"'
+            nameStr = f'"{cmp.getField("name", "-", verbose = False)}"'
+            inds = cmp.indicatorsString()
+            if inds is not None: nameStr += f' ({inds})'
+        
+            status = cmp.getField('status', '-', verbose = False)
+            statusString = f'{status}'
+        
+            processStage = cmp.getField('processStage', '-', verbose = False)
+            stageString = f'{processStage}'
 
 
-        string = f'({IDstr}) {nameStr:40} :: {statusString:30} :: {stageString:30}'
+        # string = f'({IDstr}) {nameStr:40} :: {statusString:30} :: {stageString:30}'
+        string = f'{IDstr:28}{nameStr:35}{stageString:30}{statusString:30}'
         return string
 
+    @staticmethod
+    def _printComponentDashboardHeader():
+
+        headerStr = f'{"Index":8}{"ID":28}{"Cmp. name":35}{"Process stage":30}{"Status":30}'
+        print(headerStr)
+        print(len(headerStr)*'-')
 
     def printModulesDashboard(self):
 
         print('Modules Dashboard')
+        self._printComponentDashboardHeader()
         for index, mod in enumerate(self.modules):
-            print(f'[{index:3}] ' + self._cmpDashboardString(mod))
+            print(f'[{index:3}]   ' + self._cmpDashboardString(mod))
 
     def printCOSsDashboard(self):
 
         print('COSs Dashboard')
+        self._printComponentDashboardHeader()
         for index, COS in enumerate(self.COSs):
-            print(f'[{index:3}] ' + self._cmpDashboardString(COS))
+            print(f'[{index:3}]   ' + self._cmpDashboardString(COS))
 
     def printChipsDashboard(self):
 
         print('Chips Dashboard')
+        self._printComponentDashboardHeader()
         for index, chip in enumerate(self.chips):
-            print(f'[{index:3}] ' + self._cmpDashboardString(chip))
+            print(f'[{index:3}]   ' + self._cmpDashboardString(chip))
 
 
     def printDashboard(self,
                        printModules:bool = True,
                        printCOSs:bool = False,
                        printChips:bool = True):
+
+        print(f'Module batch "{self.batch}" - Dashboard\n')
 
         if printModules: self.printModulesDashboard()
         if printCOSs: self.printCOSsDashboard()
