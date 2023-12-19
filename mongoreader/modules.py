@@ -4,7 +4,7 @@ from mongoutils import queryUtils as qu
 import mongoreader.core as c
 import mongoreader.errors as e
 import mongoreader.datasheets as ds
-
+from pandas import DataFrame
 
 def queryModuleNames(conn, *strings, batch:str = None, printNames:bool = True) -> list:
     """Queries and prints on console the components which conain "module" and
@@ -784,6 +784,75 @@ class moduleBatch:
             nameStr = f'"{module.name}"'
             statusStr = module.getField('processStage', '<No proc. stage>', verbose = None)
             print(f'[{index:3}] {nameStr:30} :: {statusStr}')
+
+
+    def dashboard(self, returnDataFrame:bool = False) -> list:
+        """Returns a list of dictionaries, each contiaining information
+        regarding the components of the wafer collation.
+
+        If returnDataFrame is True, a pandas dataframe is returned instead.
+
+        Each dictionary is in the form:
+
+        >>> {
+        >>>     'name': <str>,
+        >>>     'ID': <ID>,
+        >>>     'componentType': <str> ("module", "COS", "chip")
+        >>>     'processStage': <str>,
+        >>>     'status': <str>,
+        >>> }
+
+        Returns:
+            list[dict] | DataFrame: The list of dictionaries described above,
+                or a pandas DataFrame.
+        """
+
+        def _dashboardDict(component):
+            """N.B. Lacks 'componentType' key."""
+
+            if component is None:
+                return {key: None for key in ['name', 'ID', 'processStage', 'status']}
+
+            return {
+                'name': component.name,
+                'ID': component.ID,
+                'processStage': component.getField('processStage', verbose = False),
+                'status': component.getField('status', verbose = False),
+            }
+
+        dashboard = []
+
+        # Modules
+        cmps = self.modules
+        if cmps is None: cmps = []
+        for cmp in cmps:
+            dashboard.append({**{'componentType': 'module', **_dashboardDict(cmp)}})
+
+        # COSs
+        cmps = self.COSs
+        if cmps is None: cmps = []
+        for cmp in cmps:
+            dashboard.append({**{'componentType': 'COS', **_dashboardDict(cmp)}})
+
+        # chips
+        cmps = self.chips
+        if cmps is None: cmps = []
+        for cmp in cmps:
+            dashboard.append({**{'componentType': 'chip', **_dashboardDict(cmp)}})
+
+        if dashboard == []:
+            return None
+
+        if returnDataFrame:
+
+            dataFrameDict = {key: [] for key in ['componentType', 'name', 'ID', 'processStage', 'status']}
+            for dict in dashboard:
+                for key in dataFrameDict:
+                    dataFrameDict[key].append(dict.get(key))
+
+            return DataFrame(dataFrameDict)
+        
+        return dashboard
 
 
     @staticmethod

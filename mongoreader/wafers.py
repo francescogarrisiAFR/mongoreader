@@ -1832,6 +1832,87 @@ class waferCollation(c.collation):
         print(string)
 
 
+    def dashboard(self, returnDataFrame:bool = False) -> list:
+        """Returns a list of dictionaries, each contiaining information
+        regarding the components of the wafer collation.
+
+        If returnDataFrame is True, a pandas dataframe is returned instead.
+
+        Each dictionary is in the form:
+
+        >>> {
+        >>>     'name': <str>,
+        >>>     'ID': <ID>,
+        >>>     'componentType': <str> ("wafer", "chip", "test chip", ...)
+        >>>     'label': <str>,
+        >>>     'processStage': <str>,
+        >>>     'status': <str>,
+        >>> }
+
+        Returns:
+            list[dict] | DataFrame: The list of dictionaries described above,
+                or a pandas DataFrame.
+        """
+
+        def _dashboardDict(component):
+            """N.B. Lacks 'componentType' key."""
+
+            if component is None:
+                return {key: None for key in ['name', 'ID', 'label', 'processStage', 'status']}
+
+            return {
+                'name': component.name,
+                'ID': component.ID,
+                'label': component.getField('_waferLabel', verbose = False),
+                'processStage': component.getField('processStage', verbose = False),
+                'status': component.getField('status', verbose = False),
+            }
+
+        dashboard = []
+
+        # Wafer
+        dashboard.append({**{'componentType': 'wafer', **_dashboardDict(self.wafer)}})
+
+        # Bars
+        bars = self.bars
+        if bars is None: bars = []
+        for bar in bars:
+            dashboard.append({**{'componentType': 'bar', **_dashboardDict(bar)}})
+
+        # chips
+        chips = self.chips
+        if chips is None: chips = []
+        for chip in chips:
+            dashboard.append({**{'componentType': 'chip', **_dashboardDict(chip)}})
+
+        # test chips
+        testChips = self.testChips
+        if testChips is None: testChips = []
+        for chip in testChips:
+            dashboard.append({**{'componentType': 'test chip', **_dashboardDict(chip)}})
+
+        # test cells
+        testCells = self.testCells
+        if testCells is None: testCells = []
+        for cell in testCells:
+            dashboard.append({**{'componentType': 'test cell', **_dashboardDict(cell)}})
+
+        if dashboard == []:
+            return None
+
+        if returnDataFrame:
+
+            dataFrameDict = {key: [] for key in ['componentType', 'name', 'ID', 'label', 'processStage', 'status']}
+            for dict in dashboard:
+                for key in dataFrameDict:
+                    dataFrameDict[key].append(dict.get(key))
+
+            return DataFrame(dataFrameDict)
+        
+        return dashboard
+    
+
+
     def printDashboard(self, *,
         printIDs = False,
         printWafer = True,
@@ -1840,7 +1921,7 @@ class waferCollation(c.collation):
         printTestChips = True,
         printTestCells = True,
         excludeNoneStatus = False):
-        """Prints a schematic view of the status of wafers, bars, chips.
+        """Prints a schematic view of the status and process stage of wafers, bars, chips.
         
         Keyword arguments:
             - printIDs = False, (bool)
