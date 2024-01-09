@@ -69,14 +69,14 @@ def acronymsFromBlueprint(blueprint:mom.blueprint) -> list:
         raise TypeError(f'"blueprint" must be a mongomanager.blueprint object.')
 
     DSDefinition = blueprint.getDatasheetDefinition()
-    GroupsDict = blueprint.Locations.retrieveGroupsDict()
+    groupsDict = blueprint.Locations.retrieveGroupsDict()
 
     if DSDefinition is None:
         return None
-    if GroupsDict is None:
+    if groupsDict is None:
         return None
     
-    return acronymsFromDSdefinition(DSDefinition, GroupsDict)
+    return acronymsFromDSdefinition(DSDefinition, groupsDict)
 
 
 def spawnEmptyDataFrame(columnNames:list) -> DataFrame:
@@ -98,6 +98,11 @@ def spawnEmptyDataFrame(columnNames:list) -> DataFrame:
     return DataFrame(None, columns=columnNames, index = [0])
 
 
+def addConstantColumnToDataFrame(DF:DataFrame, columnName:str, columnValue, index:int = 0) -> list:
+    
+    DF.insert(index, columnName, [columnValue]*len(DF))
+    return DF
+
 class testReportAnalyzer:
 
     def __init__(self, testReport):
@@ -115,21 +120,19 @@ class testReportAnalyzer:
             'executionDate': self.testReport.getField('executionDate', verbose = False),
         }
 
+        # Could add information regarding the test bench, the operator, etc.
+
         return generalInfo
 
     @staticmethod
-    def _resultValueRepr(resultData:dict):
+    def _resultValueRepr(resultValue = None, resultError = None):
 
-        if resultData is None:
-            return None
-        
-        resValue = resultData.get('value')
-        resError = resultData.get('error')
+        if resultValue is not None:
+            if abs(resultValue) > SCIENTIFIC_NOTATION_THRESHOLD:
+                resultValue = str(resultValue)
+                return resultValue
 
-        if abs(resValue) > SCIENTIFIC_NOTATION_THRESHOLD:
-                resValue = str(resValue)
-
-        resRepr = dataClass.valueErrorRepr(resValue, resError, valueDecimalsWithNoneError=2, printErrorPart=False)
+        resRepr = dataClass.valueErrorRepr(resultValue, resultError, valueDecimalsWithNoneError=2, printErrorPart=False)
         return resRepr
 
     @classmethod
@@ -145,13 +148,34 @@ class testReportAnalyzer:
             resultDict['resultError'] = None
             resultDict['resultUnit'] = None
         else:
-            resultDict['resultValue'] = resData.get('value', None)
-            resultDict['resultError'] = resData.get('error', None)
-            resultDict['resultUnit'] = resData.get('unit', None)
+            value = resData.get('value', None)
+            error = resData.get('error', None)
+            unit = resData.get('unit', None)
 
-        # Normalizing result
+            # Normalizing result
+                
+            if value is not None:
+                if not isinstance(value, (int, float)):
+                    log.error(f'Result value is not a number (int or float); resultValue = {value} (type: {type(value)}).')
+                    value = None
+            
+            if error is not None:
+                if not isinstance(error, (int, float)):
+                    log.error(f'Result value is not a number (int or float); resultError = {error} (type: {type(error)}).')
+                    error = None
+            
+            if unit is not None:
+                if not isinstance(unit, str):
+                    log.error(f'Result unit is not a string; resultUnit = {unit} (type: {type(unit)}).')
+                    unit = None
+
+            resultDict["resultData"] = {'value': value, 'error': error, 'unit': unit}
+            resultDict['resultValue'] = value
+            resultDict['resultError'] = error
+            resultDict['resultUnit'] = unit
+            
         
-        resultDict['resultRepr'] = cls._resultValueRepr(resultDict.get('resultData', None))
+        resultDict['resultRepr'] = cls._resultValueRepr(value, error)
         resultDict['location'] = resultDict.get('location', None)
         resultDict['resultTags'] = resultDict.get('resultTags', None)
         resultDict['testParameters'] = resultDict.get('testParameters', None)
@@ -168,11 +192,17 @@ class testReportAnalyzer:
 
         results = [self._normalizeResult(result) for result in results]
 
+        # Adding index information
+        results = [dict(result, **{'resultIndex': index}) for index, result in enumerate(results)]
+
         return results
+    
+    def flattenedInfo(self) -> list:
+        return [{**self.generalInfo(), **resInfo} for resInfo in self.resultsInfo()]
 
 
 
-class dotOutGenerator:
+class componentDotOutGenerator:
 
     def __init__(self,
                  connection:mom.connection,
@@ -183,7 +213,58 @@ class dotOutGenerator:
         self.connection = connection
         self.component = component
         self.acronyms = acronyms
+        self.__sortingDictionary = self._defineSortingDictionary(acronyms)
 
+    @staticmethod
+    def _unpackAcronym(acronym:str):
+
+        # Unpacking acronym
+        acronym = acronym.split('_')
+        resName = acronym[0]
+        loc = acronym[1]
+        reqTags = acronym[2:]
+
+        return resName, loc, reqTags
+
+    @classmethod
+    def _defineSortingDictionary(cls, acronyms) -> dict:
+        """Returns a map between result names, locations and required tags
+        to the corresponding acronym.
+
+        >>> {
+        >>>     (resultName, location): {
+        >>>         tuple[reqTags]: "resultName_location_reqTag1_reqTag2_...",
+        >>>         tuple[reqTags]: "resultName_location_reqTag1_reqTag2_...",
+        >>>         ...
+        >>>         }
+        >>>     ...     
+        >>> }
+
+        Returns:
+            dict: Described above.
+        """        
+
+        sortingDict = {}
+
+        for acr in acronyms:
+
+            resName, loc, reqTags = cls._unpackAcronym(acr)
+            majorKey = (resName, loc)
+            minorKey = tuple(reqTags)
+
+            if minorKey == (): # No required tags
+                raise Exception(f'No required tags found for acronym "{acr}".')
+
+            if majorKey not in sortingDict.keys():
+                sortingDict[majorKey] = {}
+            
+            sortingDict[majorKey][minorKey] = acr
+        
+        return sortingDict
+
+    @property
+    def _sortingDictionary(self):
+        return self.__sortingDictionary
 
     def _retrieveTestReports(self, connection) -> list:
         """Retrieves the test reports associated to the component."""
@@ -207,53 +288,9 @@ class dotOutGenerator:
 
     def _generateDotOutHeader(self) -> DataFrame:
         return spawnEmptyDataFrame(['component', 'componentID', 'testReportName', 'testReportID',
-                                    'status', 'processStage', 'executionDate'] \
+                                    'status', 'processStage', 'executionDate',
+                                    'resultIndex', 'testParameters', 'testConditions', ] \
                                     + self.acronyms)
-    
-
-    @staticmethod
-    def _unpackAcronym(acronym:str):
-
-        # Unpacking acronym
-        acronym = acronym.split('_')
-        resName = acronym[0]
-        loc = acronym[1]
-        reqTags = acronym[2:]
-
-        return resName, loc, reqTags
-
-
-    def _sortingDictionary(self) -> dict:
-        """Returns a map between result names, locations and required tags
-        to the corresponding acronym.
-
-        >>> {
-        >>>     (resultName, location): {
-        >>>         tuple[reqTags]: "resultName_location_reqTag1_reqTag2_...",
-        >>>         tuple[reqTags]: "resultName_location_reqTag1_reqTag2_...",
-        >>>         ...
-        >>>         }
-        >>>     ...     
-        >>> }
-
-        Returns:
-            dict: Described above.
-        """        
-
-        sortingDict = {}
-
-        for acr in self.acronyms:
-
-            resName, loc, reqTags = self._unpackAcronym(acr)
-            majorKey = (resName, loc)
-            minorKey = tuple(reqTags)
-
-            if majorKey not in sortingDict.keys():
-                sortingDict[majorKey] = {}
-            
-            sortingDict[majorKey][minorKey] = acr
-        
-        return sortingDict
     
     def _acronymFromResult(self, resultInfo:dict) -> str:
 
@@ -263,7 +300,7 @@ class dotOutGenerator:
 
         majorKey = (resName, resLocation)
 
-        sortingDict = self._sortingDictionary()
+        sortingDict = self._sortingDictionary
 
         if majorKey not in sortingDict.keys():
             return None
@@ -272,6 +309,8 @@ class dotOutGenerator:
         
         for minorKey in possibleMinorKeys:
             reqTags = minorKey
+
+            if resTags is None: resTags = []
             
             if all([tag in resTags for tag in reqTags]):
                 # Here I identified a result
@@ -322,13 +361,18 @@ class dotOutGenerator:
             DF.iloc[-1] = rowDict
             DFs.append(DF)
 
+        if DFs == []:
+            return None
+
         return concat(DFs)
     
     def _renameDFcolumns(self, dotOutTable:DataFrame,
-            renameMap:dict = {
-                'componentID': 'chipID',
-            }
+            renameMap:dict = None
         ) -> DataFrame:
+
+        # No columns to rename
+        if renameMap is None:
+            return dotOutTable
 
         dotOutTable.rename(columns = renameMap, inplace = True)
         return dotOutTable
@@ -336,7 +380,152 @@ class dotOutGenerator:
     def generateDotOut(self) -> DataFrame:
 
         dotOutHeader = self._generateDotOutHeader()
+        
         testReports = self._retrieveTestReports(self.connection)
+        if testReports is None:
+            log.info(f'No test reports found for component "{self.component.name}".')
+            return None
+
         dotOutTable = self._populateDotOutTable(dotOutHeader, testReports)
+        if dotOutTable is None:
+            log.error(f'No results found for component "{self.component.name}".')
+            return None
+        
         dotOutTable = self._renameDFcolumns(dotOutTable)
+
         return dotOutTable
+    
+
+class chipDotOutGenerator(componentDotOutGenerator):
+    
+    def _renameDFcolumns(self, dotOutTable: DataFrame, renameMap: dict = {'component': 'chip', 'componentID': 'chipID' }) -> DataFrame:
+        return super()._renameDFcolumns(dotOutTable, renameMap)
+
+class moduleDotOutGenerator(componentDotOutGenerator):
+    
+    def _renameDFcolumns(self, dotOutTable: DataFrame, renameMap: dict = { 'component': 'module', 'componentID': 'moduleID' }) -> DataFrame:
+        return super()._renameDFcolumns(dotOutTable, renameMap)
+
+
+
+class collectiveDotOutGenerator:
+
+    def __init__(self, connection, components:list, DatasheetDefinition:list = None):
+
+        self.connection = connection
+
+        if DatasheetDefinition is not None:
+            acronyms = acronymsFromDSdefinition(DatasheetDefinition)
+        
+        else:
+            bps = self._retrieveComponentBlueprints(connection, components)
+
+            if bps is None:
+                raise Exception('No blueprints found for the components.')
+            
+            if len(bps) > 1:
+                log.warning('Multiple blueprints found for the components.')
+
+            acronyms = self._generateAcronyms_fromBlueprints(bps)
+
+        self.components = components
+        self.acronyms = acronyms
+
+    def _generateComponentDotOuts(self, generator:componentDotOutGenerator) -> list:
+        
+        DFs = []
+
+        with mom.opened(self.connection):
+            for component in self.components:
+                dotOutGenerator = generator(self.connection, component, self.acronyms)
+                DF = dotOutGenerator.generateDotOut()
+                if DF is not None:
+                    DFs.append(DF)
+        
+        if DFs == []:
+            return None
+
+        return DFs
+    
+    @staticmethod
+    def _retrieveComponentBlueprints(connection, components) -> list:
+
+        bpIDs = [cmp.getField('blueprintID', verbose = False) for cmp in components]
+        bpIDs = list(set(bpIDs))
+        while None in bpIDs:
+            bpIDs.remove(None)
+        
+        bps = mom.blueprint.query(connection, {'_id': {'$in': bpIDs}})
+        return bps
+
+    @staticmethod
+    def _generateAcronyms_fromBlueprints(blueprints):
+
+        allAcronyms = []
+
+        for bp in blueprints:
+            acronyms = acronymsFromBlueprint(bp)
+            
+            if acronyms is None:
+                continue
+        
+            newAcronyms = [acr for acr in acronyms if acr not in allAcronyms]
+            allAcronyms += newAcronyms
+        
+        return allAcronyms
+    
+    @staticmethod
+    def prependGeneralInfo(DF, generalInfoDict:dict) -> DataFrame:
+
+        if generalInfoDict is None or generalInfoDict == {}:
+            return DF
+
+        keys = reversed(list(generalInfoDict.keys()))
+        values = reversed(list(generalInfoDict.values()))
+
+        for key, value in zip(keys, values):
+            addConstantColumnToDataFrame(DF, key, value, index = 0)
+
+        return DF
+
+    def generateDotOut(self, generalInfoDict:dict = None) -> DataFrame:
+
+        DFs = self._generateComponentDotOuts()
+        if DFs is None:
+            return None
+        
+        DF = concat(DFs)
+        DF = self.prependGeneralInfo(DF, generalInfoDict)
+
+        return DF
+
+
+
+class waferCollationDotOutGenerator(collectiveDotOutGenerator):
+    
+    def __init__(self, connection, waferName:str):
+
+        wc = morw.waferCollation(connection, waferName)
+        self.waferName = wc.wafer.name
+        self.waferID = wc.wafer.ID
+        super().__init__(connection, wc.chips)
+
+    def _generateComponentDotOuts(self) -> DataFrame:
+        return super()._generateComponentDotOuts(generator = chipDotOutGenerator)
+    
+    def generateDotOut(self) -> DataFrame:
+        return super().generateDotOut(generalInfoDict = {'wafer': self.waferName, 'waferID': self.waferID})
+
+class moduleBatchDotOutGenerator(collectiveDotOutGenerator):
+
+    def __init__(self, connection, batch:str):
+
+        self.batch = batch
+        mb = morm.moduleBatch(connection, batch)
+        super().__init__(connection, mb.modules)
+    
+    def _generateComponentDotOuts(self) -> DataFrame:
+        return super()._generateComponentDotOuts(generator = moduleDotOutGenerator)
+    
+    def generateDotOut(self) -> DataFrame:
+        return super().generateDotOut(generalInfoDict = {'batch': self.batch})
