@@ -7,6 +7,9 @@ from mongomanager.errors import FieldNotFound
 from mongomanager import log
 from pandas import DataFrame, concat
 
+from pathlib import Path
+from abc import ABC, abstractmethod
+
 
 def acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
     """Generates the ".out"-like list of acronyms for a datasheet definition.
@@ -118,6 +121,22 @@ def spawnEmptyDotOutDataframe(acronyms:list) -> DataFrame:
         'earliestTestDate', 'latestTestDate'] + acronyms)
 
 
+def generateComponentDotOutData(component, connection) -> None:
+
+    component.Datasheet.createAndStoreDatasheet(connection,
+                                requiredProcessStages = None,
+                                requiredStati = None)
+
+
+def generateAndSaveComponentDotOutData(component, connection) -> None:
+
+    component.mongoRefresh(connection)
+    component.Datasheet.createAndStoreDatasheet(connection,
+                                requiredProcessStages = None,
+                                requiredStati = None)
+    component.mongoReplace(connection)
+
+
 def retrieveComponentDotOutData(component:mom.component)-> DataFrame:
     """This function returns from the component the data suitable for populating
     the Dot-Out table.
@@ -128,12 +147,16 @@ def retrieveComponentDotOutData(component:mom.component)-> DataFrame:
     Returns:
         DataFrame | None: The returned data, or None if not found.
     """
-    return component.Datasheet.retrieveData(returnDataFrame = True, verbose = False)
+
+    # First, I regenerate the Datasheet data
+    
+    DF = component.Datasheet.retrieveData(returnDataFrame = True, verbose = False)
+    return DF
 
 
 def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
                     component:mom.component,
-                    componentDotOutData:DataFrame = None,
+                    componentDotOutData:DataFrame,
                     *,
                     allResultDigits:bool = True,
                     scientificNotationThreshold:float = 10**9,
@@ -172,15 +195,8 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
     if not isinstance(emptyDotOutDataFrame, DataFrame):
         raise TypeError(f'"emptyDotOutDataFrame" must be a DataFrame.')
     
-    if componentDotOutData is not None:
-        if not isinstance(componentDotOutData, DataFrame):
-            raise TypeError(f'"componentDotOutData" must be a DataFrame or None.')
-
-
-    if componentDotOutData == None:
-        # Retrieved from the chip itself
-        componentDotOutData = retrieveComponentDotOutData(component)
-    # If componentDotOutData is None I only retrieve global data
+    if not isinstance(componentDotOutData, DataFrame):
+        raise TypeError(f'"componentDotOutData" must be a DataFrame or None.')
 
     rowDict = {}
     # General information
@@ -238,6 +254,8 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
 
     # dataFrame = DataFrame.from_dict({k: [v] for k, v in rowDict.items()})
     # dataFrame = DataFrame(rowDict, index=[0])
+        
+    print(f'DEBUG: rowDict generated ({rowDict})')
     
     componentDF = emptyDotOutDataFrame.copy()
 
@@ -416,7 +434,6 @@ def moduleBatchDotOutDataFrame(connection, batch:str, * ,
     return dataFrame
 
 
-
 def waferCollationDotOutDataFrame(connection, waferName:str, *,
                                   allResultDigits:bool = False,
                                   scientificNotationThreshold:float = 10**9,
@@ -468,3 +485,177 @@ def waferCollationDotOutDataFrame(connection, waferName:str, *,
 
     return dataFrame
 
+
+def prependConstantColumn(DF:DataFrame, columnName:str, columnValue) -> None:
+    DF.insert(0, "waferID", len(DF)*[columnValue])
+
+def appendConstantColumn(DF:DataFrame, columnName:str, columnValue) -> None:
+    DF.insert(len(DF.columns), "waferID", len(DF)*[columnValue])
+
+def renameColumns(DF:DataFrame, renamingMap:str) -> DataFrame:
+    DF.rename(renamingMap)
+    return DF
+
+
+def singleComponentDotOutDataFrame(connection, component, *,
+                                allResultDigits:bool = False,
+                                scientificNotationThreshold:float = 10**9,
+                            ):
+    
+    bp = component.retrieveBlueprint(connection)
+    if bp is None:
+        raise Exception(f'Could not generate dot out dataframe because component "{component.name}" has no associated blueprint.')
+    
+    acronyms = acronymsFromBlueprint(bp)
+    emptyDF = spawnEmptyDotOutDataframe(acronyms)
+
+    dotOutData = retrieveComponentDotOutData(component)
+
+    DF = dotOutDataFrame(emptyDF, component, dotOutData,
+                         allResultDigits=allResultDigits,
+                         scientificNotationThreshold=scientificNotationThreshold)
+    
+    return DF
+
+
+def singleChipDotOutDataFrame(connection, component, *,
+                            allResultDigits:bool = False,
+                            scientificNotationThreshold:float = 10**9,
+                            waferName:str):
+
+    DF = singleComponentDotOutDataFrame(connection, component,
+        allResultDigits=allResultDigits,
+        scientificNotationThreshold=scientificNotationThreshold)
+
+    prependConstantColumn(DF, 'waferName', waferName)
+    return DF
+
+
+def singleModuleDotOutDataFrame(connection, component, *,
+                            allResultDigits:bool = False,
+                            scientificNotationThreshold:float = 10**9,
+                            batchCode:str):
+    
+    DF = singleComponentDotOutDataFrame(connection, component,
+        allResultDigits=allResultDigits,
+        scientificNotationThreshold=scientificNotationThreshold)
+
+    prependConstantColumn(DF, 'batch', batchCode)
+
+
+# ==============================================================================
+# Dot Out file management
+
+class DotOutManagementException(Exception):
+    pass
+
+class DotOutFileManager:
+    
+    @staticmethod
+    def _extractHeaderData(DF:DataFrame):
+
+        csvString = DF.to_csv(index = False)
+
+        lines = csvString.split('\n')
+        header = lines[0]
+        data = lines[1]
+
+        return header, data
+    
+    @staticmethod
+    def _writeLine(filePath:Path, line:str):
+
+        with open(filePath, 'a') as fileOut:
+            fileOut.write(line)
+
+    @classmethod
+    def _createDotOutFile(cls, filePath:Path, header:str):
+
+        if filePath.exists():
+            raise DotOutManagementException(f'File already exists. Cannot create. ({filePath}).')
+        
+        cls._writeLine(filePath, header)
+        print('(Written Header)')
+
+    @classmethod
+    def appendData(cls, filePath:Path, singleComponentDotOutDF:DataFrame):
+        
+        header, data = cls._extractHeaderData(singleComponentDotOutDF)
+
+        print(f'Header: {header}')
+        print(f'Data  : {data}')
+
+        if not filePath.exists():
+            cls._createDotOutFile(filePath, header)
+
+        cls._writeLine(filePath, data)
+        print('(Written data)')
+        
+        print(f'{filePath}')
+    
+
+
+# =============================================================================
+# Global manager
+
+class DotOutManager(ABC):
+
+    def __init__(self, connection, folderPath:Path):
+        pass
+
+        self.connection = connection
+        self.folderPath = folderPath
+
+    def generateDotOutData(self, component):
+        generateComponentDotOutData(component, self.connection)
+
+    def generateAndSaveDotOutData(self, component):
+        generateAndSaveComponentDotOutData(component, self.connection)
+
+    @abstractmethod
+    def dotOutDF(self, component):
+        pass
+
+    @abstractmethod
+    def dotOutFilePath(self) -> Path:
+        pass
+
+    def saveDotOutLine(self, component, mongoDBupload:bool = False):
+        
+        if mongoDBupload:
+            self.generateAndSaveDotOutData(component)
+        
+        else:
+            self.generateDotOutData(component)
+        
+        DF = self.dotOutDF(component)
+        filePath = self.dotOutFilePath()
+
+        DotOutFileManager.appendData(filePath, DF)
+
+
+class DotOutManager_Modules(DotOutManager):
+    pass
+
+    # TODO: Rename columns for modules
+
+class DotOutManager_CDM128Modules(DotOutManager_Modules):
+    pass
+
+    # TODO: Rename columns for CDM128 modules
+
+
+class DotOutManager_Chips(DotOutManager):
+    pass
+
+    # TODO: Rename columns for chips
+
+    # “wafer” (o “waferName”): 3CA0039  “LotID”: 3CA0039
+    # “chip” (o “chipName”): COR-V2-02  “ChipID”: 32 (codifica necessaria solo ora per Cordoba per via delle revisioni, in seguito il ChipID sarà univoco per la fetta come lo è già ad esempio per Cambridge) 
+    # DUT_ID  LotID+ChipID = 3CA003932 (prima colonna da riportare nel file .out attualmente generato)
+
+
+class DotOutManager_CordobaChips(DotOutManager_Chips):
+    pass
+
+    # TODO: Rename columns for cordoba chips
