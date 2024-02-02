@@ -67,17 +67,17 @@ def acronymsFromBlueprint(blueprint:mom.blueprint) -> list:
     """    
 
     if not isinstance(blueprint, mom.blueprint):
-        raise TypeError(f'"blueprint" must be a mongomanager.blueprint object.')
+        raise TypeError(f'"blueprint" must be a mongomanager blueprint object.')
 
     DSDefinition = blueprint.getDatasheetDefinition()
-    GroupsDict = blueprint.Locations.retrieveGroupsDict()
+    groupsDict = blueprint.Locations.retrieveGroupsDict()
 
     if DSDefinition is None:
         return None
-    if GroupsDict is None:
+    if groupsDict is None:
         return None
     
-    return acronymsFromDSdefinition(DSDefinition, GroupsDict)
+    return acronymsFromDSdefinition(DSDefinition, groupsDict)
 
 
 def spawnEmptyDataFrame(columnNames:list) -> DataFrame:
@@ -181,7 +181,7 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
             otherwise the numbers are rounded. Defaults to False.
         scientificNotationThreshold (float, optional): The threshold for the
             absolute value of numbers over which they are reported in scientific
-            notation. Defaults to 10**9.s
+            notation. Defaults to 10**9.
 
     Returns:
         DataFrame: The dot-out DataFrame for the component.
@@ -492,9 +492,8 @@ def prependConstantColumn(DF:DataFrame, columnName:str, columnValue) -> None:
 def appendConstantColumn(DF:DataFrame, columnName:str, columnValue) -> None:
     DF.insert(len(DF.columns), "waferID", len(DF)*[columnValue])
 
-def renameColumns(DF:DataFrame, renamingMap:str) -> DataFrame:
+def renameColumns(DF:DataFrame, renamingMap:str) -> None:
     DF.rename(renamingMap)
-    return DF
 
 
 def singleComponentDotOutDataFrame(connection, component, *,
@@ -528,6 +527,7 @@ def singleChipDotOutDataFrame(connection, component, *,
         scientificNotationThreshold=scientificNotationThreshold)
 
     prependConstantColumn(DF, 'waferName', waferName)
+
     return DF
 
 
@@ -541,6 +541,8 @@ def singleModuleDotOutDataFrame(connection, component, *,
         scientificNotationThreshold=scientificNotationThreshold)
 
     prependConstantColumn(DF, 'batch', batchCode)
+
+    return DF
 
 
 # ==============================================================================

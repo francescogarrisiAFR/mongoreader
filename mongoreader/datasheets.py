@@ -87,7 +87,7 @@ class _DatasheetsBaseClass(_attributeClass):
                         requiredTags,
                         tagsToExclude,
                         locations = locations,
-                        returnDataFrame = returnDataFrame,
+                        returnDataFrame = False,
                         datasheetIndex = datasheetIndex,
                         verbose = False
                     )
@@ -97,22 +97,18 @@ class _DatasheetsBaseClass(_attributeClass):
 
             if includeWaferLabels:
                 label = cmp.getField('_waferLabel', verbose = False)
-                
-                if returnDataFrame: # scoopedResults is a DataFrame
-                    scoopedResults.insert(0, "label", [label]*len(scoopedResults))
-
-                else:
-                    scoopedResults = [{**{'label': label}, **s} for s in scoopedResults]
+                scoopedResults = [{**{'label': label}, **s} for s in scoopedResults]
 
             allResults.append(scoopedResults)
             
         # Returning
+            
+        allResults = _joinListsOrNone(*allResults)
 
         if returnDataFrame:
-            return concat(allResults, ignore_index = True)
+            return DataFrame(allResults)
 
-        else:
-            return _joinListsOrNone(*allResults)
+        return allResults
 
 
 
