@@ -657,13 +657,9 @@ class DotOutFileManager:
             log.error(f'[DotOutFileManager] Something went wrong when writing data to file ({filePath}).')
             log.error(e)
             return None
-    
-
-
-# =============================================================================
-# Global manager
         
-# Implements also changes to columns required by Production
+# ==============================================================================
+# Support functions
 
 def chipID(chipName):
     """Valid for all chip types, including Cordoba."""
@@ -710,51 +706,30 @@ def DUT_ID(chipName:str):
 
     waferName, _ = chipName.split('_', maxsplit = 1)
     return waferName + chipID(chipName)
-
-
-@dataclass
-class DotOutManagerSettings:
-    allResultDigits:bool
-    scientificNotationThreshold:float
-    useTestReports:bool
-    mongoDBupload:bool
-    dotOutFolderPath:Path
-
-    @classmethod
-    def fromDict(cls, settingsDict:dict):
-        return cls(**settingsDict)
-
-    def toDict(self):
-        return self.__dict__
     
-    @classmethod
-    def fromFile(cls, filePath:Path):
-        pass
 
-settings = DotOutManagerSettings(
-    allResultDigits = False,
-    scientificNotationThreshold = 10**9,
-    useTestReports = True,
-    mongoDBupload = False,
-    dotOutFolderPath = Path(r'C:\Users\francesco.garrisi\Desktop\Test Dot Out')
-)
-
-print(settings['allResultDigits'])
+# =============================================================================
+# Global manager
 
 
 class DotOutManager(ABC):
     """This class is used to manage the generation of dot-out tables for
     components and for appending the corresponding data to the .out files."""
 
-    def __init__(self, connection, folderPath:Path):
+    def __init__(self, connection,
+            folderPath:Path,
+            mongoDBupload:bool = False,
+        ):
         self.connection = connection
         self.folderPath = folderPath
-
-    def generateDotOutData(self, component):
+        self.mongoDBupload = mongoDBupload
+    
+    def _generateDotOutData(self, component):
         generateComponentDotOutData(component, self.connection)
 
-    def generateAndSaveDotOutData(self, component):
+    def _generateAndSaveDotOutData(self, component):
         generateAndSaveComponentDotOutData(component, self.connection)
+
 
     @abstractmethod
     def _dotOutDF(self, component):
@@ -796,15 +771,15 @@ class DotOutManager(ABC):
             return None
 
 
-    def saveDotOutLine(self, component, mongoDBupload:bool = False):
+    def saveDotOutLine(self, component):
         
         log.important(f'Started saving dot out line for component "{component.name}".')
 
-        if mongoDBupload:
+        if self.mongoDBupload is True:
             log.important(f'mongoDBupload = True: Generating datasheet for component and uploading to MongoDB.')
 
             try:
-                self.generateAndSaveDotOutData(component)
+                self._generateAndSaveDotOutData(component)
             except Exception as e:
                 log.error('[DotOutManager.saveDotOutLine] Something went wrong when generating and uploading datasheet data to MongoDB.')
                 log.error(e)
@@ -814,7 +789,7 @@ class DotOutManager(ABC):
             log.important(f'mongoDBupload = False: Generating datasheet for component (without uploading to MongoDB).')
             
             try:
-                self.generateDotOutData(component)
+                self._generateDotOutData(component)
             except Exception as e:
                 log.error('[DotOutManager.saveDotOutLine] Something went wrong when generating datasheet data to MongoDB.')
                 log.error(e)
@@ -833,6 +808,15 @@ class DotOutManager(ABC):
 
 class DotOutManager_Modules(DotOutManager):
 
+    def __init__(self, connection, folderPath:Path,
+                 mongoDBupload:bool = False,
+                 allResultDigits:bool = False,
+                 scientificNotationThreshold:float = 10**9,
+                 ):
+        super().__init__(connection, folderPath, mongoDBupload)
+        self.allResultDigits = allResultDigits
+        self.scientificNotationThreshold = scientificNotationThreshold
+
     def _dotOutFilePath(self, module) -> Path:
         
         batch = module.getField('batch', verbose = False)
@@ -844,8 +828,8 @@ class DotOutManager_Modules(DotOutManager):
     def _dotOutDF(self, module) -> DataFrame:
         
         DF = _singleModuleDotOutDataFrame(self.connection, module,
-                allResultDigits = False,
-                scientificNotationThreshold = 10**9,
+                allResultDigits = self.allResultDigits,
+                scientificNotationThreshold = self.scientificNotationThreshold,
                 batchCode = module.getField('batch', verbose = False))
         if DF is None: return None
 
@@ -862,6 +846,16 @@ class DotOutManager_Modules(DotOutManager):
 
 class DotOutManager_Chips(DotOutManager):
 
+    def __init__(self, connection, folderPath:Path,
+                 mongoDBupload:bool = False,
+                 allResultDigits:bool = False,
+                 scientificNotationThreshold:float = 10**9,
+                 ):
+        super().__init__(connection, folderPath, mongoDBupload)
+        self.allResultDigits = allResultDigits
+        self.scientificNotationThreshold = scientificNotationThreshold
+
+
     def _dotOutFilePath(self, chip) -> Path:
         
         waferName = chip.name.split('_', maxsplit = 1)[0]
@@ -876,8 +870,8 @@ class DotOutManager_Chips(DotOutManager):
         chipName = chip.name
 
         DF = _singleChipDotOutDataFrame(self.connection, chip,
-                allResultDigits = False,
-                scientificNotationThreshold = 10**9,
+                allResultDigits = self.allResultDigits,
+                scientificNotationThreshold = self.scientificNotationThreshold,
                 waferName = wafer.name)
         if DF is None: return None
 
