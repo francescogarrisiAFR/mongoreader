@@ -11,6 +11,13 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+GENERAL_FIELDS_MONGODB = ['component', 'componentID',
+        'earliestTestDate', 'latestTestDate', 'bench', 'operator']
+
+STAGES_MONGODB = ['Chip testing', 'Final test']
+STAGES_MMS = ['VFBCFIN', 'BCBCFIN']
+STAGES_MONGODB_TO_MMS = dict(zip(STAGES_MONGODB, STAGES_MMS))
+
 def _acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
     """Generates the ".out"-like list of acronyms for a datasheet definition.
     
@@ -117,32 +124,36 @@ def _spawnEmptyDotOutDataframe(acronyms:list) -> DataFrame:
         raise TypeError(f'"acronyms" must be a list of strings.')
 
     return _spawnEmptyDataFrame(
-        ['component', 'componentID', 'status', 'processStage',
-        'earliestTestDate', 'latestTestDate'] + acronyms)
+        GENERAL_FIELDS_MONGODB + acronyms)
 
 
-def generateComponentDotOutData(component, connection) -> None:
+def generateComponentDotOutData(component, connection,
+                                processStage:str = None) -> None:
     """Uses the datasheet definition found in a component's blueprint to
     generate a new datasheet and store it in the component.
     
     The data is NOT uploaded to the database."""
 
+    if processStage is not None:
+        stages = [processStage]
+    else:
+        stages = None
+
     component.Datasheet.createAndStoreDatasheet(connection,
-                                requiredProcessStages = None,
+                                requiredProcessStages = stages,
                                 requiredStati = None)
 
 
-def generateAndSaveComponentDotOutData(component, connection) -> None:
+def generateAndSaveComponentDotOutData(component, connection,
+                                       processStage:str = None) -> None:
     """Uses the datasheet definition found in a component's blueprint to
     generate a new datasheet and store it in the component.
 
     The data is then uploaded to the database (the component is mongoReplaced).
     """
 
-    component.mongoRefresh(connection)
-    component.Datasheet.createAndStoreDatasheet(connection,
-                                requiredProcessStages = None,
-                                requiredStati = None)
+    generateComponentDotOutData(component, connection,
+                                processStage = processStage)
     component.mongoReplace(connection)
 
 
@@ -208,10 +219,10 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
     rowDict = {
         'component': component.getField('name', verbose = False),
         'componentID': component.ID,
-        'status': component.getField('status', verbose = False),
-        'processStage': component.getField('processStage', verbose = False),
         'earliestTestDate': None, # To be set later
         'latestTestDate': None, # To be set later
+        'bench': None, # To be set later
+        'operator': None, # To be set later
     }
 
     # Populating the acronym fields
@@ -224,6 +235,8 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
 
         for _, r in componentDotOutData.iterrows():
 
+            # Execution date
+
             date = r.get('executionDate')
             
             if date is not None:
@@ -232,6 +245,8 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
 
                 if date < earliestTestDate: earliestTestDate = date
                 if date > latestTestDate: latestTestDate = date
+
+            # Result aronym and value
 
             resName = r.get('resultName')
             loc = r.get('location')
@@ -257,6 +272,19 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
             acronym = '_'.join([resName, loc]+reqTags)
             rowDict[acronym] = resValue
 
+            # Bench and operator
+
+            # N.B. The code below collects the bench and operator from the last
+            # result entry scooped from the datasheet data. This masks the
+            # situation where the bench and operator are different for different
+            # testReports. This is a limitation of the current implementation.
+
+            bench = r.get('bench')
+            rowDict['bench'] = bench
+
+            operator = r.get('operator')
+            rowDict['operator'] = operator
+
         # Execution dates
         rowDict['earliestTestDate'] = earliestTestDate
         rowDict['latestTestDate'] = latestTestDate
@@ -267,11 +295,6 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
     # print(f'DEBUG: rowDict generated ({rowDict})')
     
     componentDF = emptyDotOutDataFrame.copy()
-
-    # for key, val in rowDict.items():
-    #     if key in componentDF.columns:
-    #         componentDF[key] = val
-
     componentDF.iloc[-1] = rowDict
 
 
@@ -706,6 +729,27 @@ def DUT_ID(chipName:str):
 
     waferName, _ = chipName.split('_', maxsplit = 1)
     return waferName + chipID(chipName)
+
+def LOT_ID(chipName:str):
+
+    waferName, _ = chipName.split('_', maxsplit = 1)
+    return waferName
+
+
+def chipType(chipName:str):
+    """E.g.
+    chipName: "3CAxxxx_COR-V1-01" -> "COR-V1".
+    chipName: "3DR0001_DR8-01" -> "DR8".
+    chipName: "2BI0016_05-SE -> "SE"    
+    """
+
+    if any([x in chipName for x in ['COR', 'DR']]):
+        _, chipSerial = chipName.split('_', maxsplit = 1)
+        chipType = chipSerial.rsplit('-', maxsplit = 1)[0]
+    else:
+        raise NotImplementedError(f'chipType() not implemented for chip "{chipName}".')
+
+    return chipType
     
 
 # =============================================================================
@@ -718,18 +762,19 @@ class DotOutManager(ABC):
 
     def __init__(self, connection,
             folderPath:Path,
+            processStage:str = None,
             mongoDBupload:bool = False,
         ):
         self.connection = connection
         self.folderPath = folderPath
         self.mongoDBupload = mongoDBupload
-    
+        self.processStage = processStage
+
     def _generateDotOutData(self, component):
-        generateComponentDotOutData(component, self.connection)
+        generateComponentDotOutData(component, self.connection, self.processStage)
 
     def _generateAndSaveDotOutData(self, component):
-        generateAndSaveComponentDotOutData(component, self.connection)
-
+        generateAndSaveComponentDotOutData(component, self.connection,  self.processStage)
 
     @abstractmethod
     def _dotOutDF(self, component):
@@ -809,11 +854,12 @@ class DotOutManager(ABC):
 class DotOutManager_Modules(DotOutManager):
 
     def __init__(self, connection, folderPath:Path,
+                 processStage:str = None,
                  mongoDBupload:bool = False,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
-        super().__init__(connection, folderPath, mongoDBupload)
+        super().__init__(connection, folderPath, processStage, mongoDBupload)
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
 
@@ -847,20 +893,29 @@ class DotOutManager_Modules(DotOutManager):
 class DotOutManager_Chips(DotOutManager):
 
     def __init__(self, connection, folderPath:Path,
+                 processStage:str = None,
                  mongoDBupload:bool = False,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
-        super().__init__(connection, folderPath, mongoDBupload)
+        super().__init__(connection, folderPath, processStage, mongoDBupload)
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
 
 
     def _dotOutFilePath(self, chip) -> Path:
-        
-        waferName = chip.name.split('_', maxsplit = 1)[0]
-        fileName = waferName + '.out'
 
+        if 'COR' in chip.name:
+            fileStem = 'PA015945'
+
+        else:
+            # File name generated from wafer name
+            fileStem = chip.name.split('_', maxsplit = 1)[0]
+
+        if self.processStage is not None:
+            fileStem += f'_{STAGES_MONGODB_TO_MMS[self.processStage]}'        
+
+        fileName = fileStem + '.out'
         filePath = self.folderPath / fileName
         return filePath
 
@@ -875,14 +930,41 @@ class DotOutManager_Chips(DotOutManager):
                 waferName = wafer.name)
         if DF is None: return None
 
+        # Parsing general information for MMS
+
+        _prependConstantColumn(DF, 'ChipID', chipID(chipName))
+        _prependConstantColumn(DF, 'type', chipType(chipName))
+        _prependConstantColumn(DF, 'LOT_ID', LOT_ID(chipName))
         _prependConstantColumn(DF, 'DUT_ID', DUT_ID(chipName))
-        _mapFunctionToColumn(DF, 'component', chipID)
-        _deleteColumns(DF, ['componentID'])
-        _renameColumns(DF,
-            {
-                'waferName': 'LOT_ID',
-                'component': 'ChipID',
-            }
-        )
+        _deleteColumns(DF, ['waferName', 'component', 'componentID'])
+
+        # Changing column names to append the stage acronym
+        self._renameColumnsForStage(DF) # Works even if processStage is None
 
         return DF
+    
+    def _renameStageMap(self, DF:DataFrame) -> dict:
+        
+        if self.processStage is None:
+            raise DotOutManagementException('No process stage has been defined, thus the stage map cannot be generated.')
+        
+        stageTag = STAGES_MONGODB_TO_MMS[self.processStage]
+        
+        oldColumns = list(DF.columns)
+
+        newColumns = []
+        for col in oldColumns:
+            if col in ['DUT_ID', 'LOT_ID', 'type', 'ChipID']:
+                newColumns.append(col)
+            else:
+                newColumns.append(f'{col}_{stageTag}')
+
+        return dict(zip(oldColumns, newColumns))
+    
+    def _renameColumnsForStage(self, DF:DataFrame):
+
+        if self.processStage is None:
+            return
+        
+        else:
+            _renameColumns(DF, self._renameStageMap(DF))
