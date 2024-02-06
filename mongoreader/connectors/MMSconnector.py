@@ -5,7 +5,7 @@ from datautils import dataClass
 import mongomanager as mom
 from mongomanager.errors import FieldNotFound
 from mongomanager import log
-from pandas import DataFrame, concat
+from pandas import DataFrame, concat, isnull
 from typing import TypedDict
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -52,6 +52,15 @@ def deprecatedFunction(function):
     
 
 # ------------------------------------------------------------------------------
+
+def _isDateNone(date):
+    """Assuming date is either None, a datetime object or a pandas.NaT object,
+    this method returns True if date is None or pandas.NaT, False otherwise."""
+    
+    if date is None: return True
+    if isnull(date): return True
+
+    return False
 
 
 def _acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
@@ -269,18 +278,30 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
         earliestTestDate = None
         latestTestDate = None
 
-        for _, r in componentDotOutData.iterrows():
+        for index, r in componentDotOutData.iterrows():
 
             # Execution date
 
             date = r.get('executionDate')
-            
-            if date is not None:
-                if earliestTestDate is None: earliestTestDate = date
-                if latestTestDate is None: latestTestDate = date
 
-                if date < earliestTestDate: earliestTestDate = date
-                if date > latestTestDate: latestTestDate = date
+            log.debug(f'[dotOutDataFrame] [{index:3}] date: {date}')
+            
+            if not _isDateNone(date):
+
+                if earliestTestDate is None:
+                    log.debug(f'[dotOutDataFrame] [{index:3}] Assigning earliest date for the first time ({date}).')
+                    earliestTestDate = date
+
+                if latestTestDate is None:
+                    log.debug(f'[dotOutDataFrame] [{index:3}] Assigning latest date for the first time ({date}).')
+                    latestTestDate = date
+
+                if date < earliestTestDate:
+                    earliestTestDate = date
+                    log.debug(f'[dotOutDataFrame] [{index:3}] Found an earlier date ({date}).')
+                if date > latestTestDate:
+                    latestTestDate = date
+                    log.debug(f'[dotOutDataFrame] [{index:3}] Found a later date ({date}).')
 
             # Result acronym and value
 
