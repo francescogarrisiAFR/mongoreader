@@ -282,7 +282,7 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
                 if date < earliestTestDate: earliestTestDate = date
                 if date > latestTestDate: latestTestDate = date
 
-            # Result aronym and value
+            # Result acronym and value
 
             resName = r.get('resultName')
             loc = r.get('location')
@@ -968,13 +968,24 @@ class DotOutManager_Modules(DotOutManager):
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
 
+    @staticmethod
+    def _processStageTag(processStage) -> str:
+        """Returns the acronym for the process stage, as used in the MMS system."""
+
+        return processStage.replace(' ', '-')
+
     def _dotOutFilePath(self, module) -> Path:
         
         batch = module.getField('batch', verbose = False)
-        fileName = batch.replace('/', '-') + '.out'
+        fileStem = batch.replace('/', '-')
 
+        if self.processStage is not None:
+            fileStem += f'_{self._processStageTag(self.processStage)}'
+
+        fileName = fileStem + '.out'
         filePath = self.folderPath / fileName
         return filePath
+
 
     def _dotOutDF(self, module) -> DataFrame:
         
@@ -1034,7 +1045,7 @@ class DotOutManager_Chips(DotOutManager):
     def _dotOutFilePath(self, chip) -> Path:
 
         waferName, _ = chip.name.split('_', maxsplit = 1)
-        waferType = waferName[1:2]
+        waferType = waferName[1:3]
 
         if waferType in PART_NUMBERS:
             fileStem = PART_NUMBERS[waferType]
