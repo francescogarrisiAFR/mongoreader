@@ -62,6 +62,17 @@ def _isDateNone(date):
 
     return False
 
+def _isNumberNone(number):
+    """Assuming date is either None, a datetime object or a pandas.NaT object,
+    this method returns True if date is None or pandas.NaT, False otherwise."""
+    
+    if number is None: return True
+    if isnull(number): return True
+
+    return False
+
+
+
 
 def _acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
     """Generates the ".out"-like list of acronyms for a datasheet definition.
@@ -320,6 +331,10 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
 
                 elif allResultDigits is False: # Digits based on error
                     resError = r.get('resultError')
+
+                    if _isNumberNone(resValue): resValue = None
+                    if _isNumberNone(resError): resError = None
+
                     resRepr = dataClass.valueErrorRepr(resValue, resError, valueDecimalsWithNoneError=2, printErrorPart=False)
                     # resValue = float(resRepr)
                     resValue = resRepr # string
