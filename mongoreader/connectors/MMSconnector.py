@@ -736,12 +736,18 @@ class DotOutFileManager:
             fileOut.write(line)
 
     @classmethod
+    def _writeHeader(cls, filePath:Path, header:str):
+
+        cls._writeLine(filePath, header)
+        cls._writeLine(filePath, '') # Add additional empty line before data
+
+    @classmethod
     def _createDotOutFile(cls, filePath:Path, header:str):
 
         if filePath.exists():
             raise DotOutManagementException(f'File already exists. Cannot create. ({filePath}).')
         
-        cls._writeLine(filePath, header)
+        cls._writeHeader(filePath, header)
         print('(Written Header)')
 
     @classmethod
