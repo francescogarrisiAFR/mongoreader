@@ -11,6 +11,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import wraps
+from subprocess import run, CompletedProcess, CalledProcessError, TimeoutExpired
 
 GENERAL_FIELDS_MONGODB = ['component', 'componentID',
         'earliestTestDate', 'latestTestDate', 'bench', 'operator']
@@ -1157,3 +1158,35 @@ class DotOutManager_Chips(DotOutManager):
         
         else:
             _renameColumns(DF, self._renameStageMap(DF))
+
+
+
+# ==============================================================================
+# Running Out2EDC
+            
+def runOut2EDC(exePath:Path) -> None:
+
+    if not isinstance(exePath, Path):
+        raise TypeError("exePath must be a pathlib.Path object.")
+    if not exePath.suffix == ".exe":
+        raise ValueError("exePath must point to an .exe file.")
+    if not exePath.stem == 'Out2EDC':
+        raise ValueError('exePath must point to "Out2EDC.exe".')
+
+    try:
+        run(str(exePath), shell = True, capture_output=True, check = True, timeout=5)
+    
+    except CalledProcessError as e:
+        log.error('An error occurred with running OUT2EDC.exe')
+        log.error(f'Execution exit code: {e.returncode}')
+        log.error('STDOUT: ' + e.stdout.decode('utf-8'))
+        log.error('STDERR: ' + e.stderr.decode('utf-8'))
+        log.error(f"Python exception: {e}")
+
+    except TimeoutExpired as e:
+        log.error('Timeout (5 sec) reachec when running Out2EDC.exe')
+        log.error('STDOUT: ' + e.stdout.decode('utf-8'))
+        log.error('STDERR: ' + e.stderr.decode('utf-8'))
+        log.error(f"Python exception: {e}")
+    else:
+        log.info(f"OUT2EDC successfully executed ({exePath}).")
