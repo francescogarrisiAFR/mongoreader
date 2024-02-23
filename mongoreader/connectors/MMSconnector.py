@@ -1164,7 +1164,7 @@ class DotOutManager_Chips(DotOutManager):
 # ==============================================================================
 # Running Out2EDC
             
-def runOut2EDC(exePath:Path) -> None:
+def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
 
     if not isinstance(exePath, Path):
         raise TypeError("exePath must be a pathlib.Path object.")
@@ -1173,8 +1173,15 @@ def runOut2EDC(exePath:Path) -> None:
     if not exePath.stem == 'Out2EDC':
         raise ValueError('exePath must point to "Out2EDC.exe".')
 
+    if not isinstance(dotOutPath, Path):
+        raise TypeError("dotOutPath must be a pathlib.Path object.")
+    if not dotOutPath.suffix == ".out":
+        raise ValueError("dotOutPath must point to an .out file.")
+    
+    command = f'"{exePath}" "{dotOutPath}"'
+
     try:
-        run(str(exePath), shell = True, capture_output=True, check = True, timeout=5)
+        run(command, shell = True, capture_output=True, check = True, timeout=5)
     
     except CalledProcessError as e:
         log.error('An error occurred with running OUT2EDC.exe')
@@ -1189,4 +1196,4 @@ def runOut2EDC(exePath:Path) -> None:
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
     else:
-        log.info(f"OUT2EDC successfully executed ({exePath}).")
+        log.info(f"OUT2EDC successfully executed ({command}).")
