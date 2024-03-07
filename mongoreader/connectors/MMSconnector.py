@@ -18,6 +18,7 @@ GENERAL_FIELDS_MONGODB = ['component', 'componentID',
         'earliestTestDate', 'latestTestDate', 'bench', 'operator']
 
 # Process stage acronyms
+# N.B. These are currently (6/3/2024) used only for Cordoba chips.
 OLDSTAGES_MONGODB = ['Chip testing', 'Final test']
 STAGES_MMS = ['VFBCFIN', 'BCBCFIN']
 STAGES_MONGODB_TO_MMS = dict(zip(OLDSTAGES_MONGODB, STAGES_MMS))
@@ -29,8 +30,23 @@ PART_NUMBERS = { # <Wafer two-letter acronym>: <Part Number>
 }
 
 # ------------------------------------------------------------------------------
-# Decorators
+# Exceptions
 
+class DotOutException(Exception):
+    """Base class for exceptions raised during the generation of the dot-out
+    tables."""
+
+    pass
+
+class FailedDatasheetGeneration(DotOutException):
+    """Raised when the generation of the datasheet data fails."""
+
+    pass
+
+
+
+# ------------------------------------------------------------------------------
+# Decorators
 
 def deprecatedFunction(function):
     """If a function is a @deprecatedFunction, a deprecation warning is issued
@@ -110,12 +126,23 @@ def _acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
     for entry in DSdefintion:
         resName = entry['resultName']
         locations = locGroupDict[entry['locationGroup']]
-        reqTags = entry['tagFilters']['required']
+
+        reqTags = None
+        if 'tagFilters' in entry:
+            reqTags = entry['tagFilters'].get('required')
+            if reqTags == []: reqTags = None
+
+        if reqTags is None:
+            log.warning(f'No required tags for result "{resName}" at location group "{entry["locationGroup"]}". Associated acronyms are generated without trailing tags.')
 
         for loc in locations:
-            acronym = '_'.join([resName, loc]+reqTags)
+            
+            toJoin = [resName, loc]
+            if reqTags is not None: toJoin.extend(reqTags)
+
+            acronym = '_'.join(toJoin)
             acronyms.append(acronym)
-    
+
     return acronyms
 
 
@@ -188,12 +215,27 @@ def _spawnEmptyDotOutDataframe(acronyms:list) -> DataFrame:
         GENERAL_FIELDS_MONGODB + acronyms)
 
 
-def generateComponentDotOutData(component, connection,
+def generateComponentDotOutData(component, connection, blueprint,
                                 processStage_orStages:str|list[str] = None) -> None:
     """Uses the datasheet definition found in a component's blueprint to
     generate a new datasheet and store it in the component.
     
     The data is NOT uploaded to the database."""
+
+    log.debug(f'[generateComponentDotOutData] component name: {component.name}')
+    log.debug(f'[generateComponentDotOutData] connection: {connection}')
+    log.debug(f'[generateComponentDotOutData] blueprint name: {blueprint.name if blueprint is not None else "<No blueprint>"}')
+    log.debug(f'[generateComponentDotOutData] processStage_orStages: {processStage_orStages}')
+
+    if connection is None and blueprint is None:
+        raise ValueError(f'"connection" and "blueprint" cannot be both None when generating dot-out data.')
+    
+    if connection is not None and blueprint is not None:
+        raise ValueError(f'"connection" and "blueprint" cannot be both not None when generating dot-out data.')
+
+    if blueprint is not None:
+        if not isinstance(blueprint, mom.blueprint):
+            raise TypeError(f'When not None, "blueprint" must be a mongomanager.blueprint object (it is {type(blueprint)}).')
 
     if processStage_orStages is None:
         stages = None
@@ -209,12 +251,35 @@ def generateComponentDotOutData(component, connection,
     else:
         raise TypeError(f'"processStage_orStages" must be a string, a list of strings, or None (it is {type(processStage_orStages)}).')
 
-    component.Datasheet.createAndStoreDatasheet(connection,
+    if connection is not None:
+        DS = component.Datasheet.createAndStoreDatasheet(connection,
                                 requiredProcessStages = stages,
                                 requiredStati = None)
+    
+    if blueprint is not None:
+        log.warning('generateComponentDotOutData is generating the datasheet using the provided blueprint. This mode is meant to be used only for debugging.')
+        
+        DSD = blueprint.getDatasheetDefinition()
+        locationsDict = blueprint.Locations.retrieveGroupsDict()
+
+        if DSD is None:
+            raise Exception(f'I cannot proceed to generate the datasheet because the blueprint "{blueprint.name}" has no datasheet definition.')
+        if locationsDict is None:
+            raise Exception(f'I cannot proceed to generate the datasheet because the blueprint "{blueprint.name}" has no locations.')
+
+        DS = component.Datasheet.createAndStoreDatasheet(connection,
+                requiredProcessStages = stages,
+                requiredStati = None,
+                datasheetDefinition = DSD,
+                locationsDict = locationsDict)
+        
+    if DS is None:
+        raise FailedDatasheetGeneration(f'Failed to generate datasheet for component "{component.name}".')
 
 
-def generateAndSaveComponentDotOutData(component, connection,
+
+
+def generateAndSaveComponentDotOutData(component, connection, blueprint,
                                        processStage_orStages:str|list[str] = None) -> None:
     """Uses the datasheet definition found in a component's blueprint to
     generate a new datasheet and store it in the component.
@@ -222,8 +287,18 @@ def generateAndSaveComponentDotOutData(component, connection,
     The data is then uploaded to the database (the component is mongoReplaced).
     """
 
-    generateComponentDotOutData(component, connection,
+    if connection is None:
+        raise TypeError(f'"cannection" cannot be None when generating and saving dot-out data.')
+
+    if blueprint is not None:
+        # Generating data from datasheet definition stored in the blueprint
+        generateComponentDotOutData(component, None, blueprint,
                                 processStage = processStage_orStages)
+    else:
+        # The blueprint is automatically retrieved from the component
+        generateComponentDotOutData(component, connection, None,
+                                processStage = processStage_orStages)
+        
     component.mongoReplace(connection)
 
 
@@ -355,6 +430,7 @@ def dotOutDataFrame(emptyDotOutDataFrame:DataFrame,
                 else:
                     resValue = str(resValue)
             
+            if reqTags is None: reqTags = []
             acronym = '_'.join([resName, loc]+reqTags)
             rowDict[acronym] = resValue
 
@@ -647,6 +723,7 @@ def _mapFunctionToColumn(DF:DataFrame, columnName:str, function:callable) -> Non
 
 # Abstract function to be implemented for each component type
 def _singleComponentDotOutDataFrame(connection, component, *,
+                                blueprint:mom.blueprint = None,
                                 allResultDigits:bool = False,
                                 scientificNotationThreshold:float = 10**9,
                             ):
@@ -657,11 +734,17 @@ def _singleComponentDotOutDataFrame(connection, component, *,
     
     The datasheet data in the component are not generated by this function."""
     
-    with mom.recallDocuments():
+    
+    if blueprint is None:
+        # with mom.recallDocuments():
         bp = component.retrieveBlueprint(connection)
+    else:
+        bp = blueprint
 
     if bp is None:
         raise Exception(f'Could not generate dot out dataframe because component "{component.name}" has no associated blueprint.')
+    if not isinstance(bp, mom.blueprint):
+        raise TypeError(f'The retrieved blueprint is not actually a mongomanager.blueprint (it is {type(bp)}).')
     
     acronyms = acronymsFromBlueprint(bp)
     emptyDF = _spawnEmptyDotOutDataframe(acronyms)
@@ -679,6 +762,7 @@ def _singleComponentDotOutDataFrame(connection, component, *,
 
 
 def _singleChipDotOutDataFrame(connection, component, *,
+                            blueprint:mom.blueprint = None,
                             allResultDigits:bool = False,
                             scientificNotationThreshold:float = 10**9,
                             waferName:str):
@@ -689,6 +773,7 @@ def _singleChipDotOutDataFrame(connection, component, *,
     The datasheet data in the component are not generated by this function"""
 
     DF = _singleComponentDotOutDataFrame(connection, component,
+        blueprint=blueprint,
         allResultDigits=allResultDigits,
         scientificNotationThreshold=scientificNotationThreshold)
     if DF is None: return None
@@ -699,6 +784,7 @@ def _singleChipDotOutDataFrame(connection, component, *,
 
 
 def _singleModuleDotOutDataFrame(connection, component, *,
+                            blueprint:mom.blueprint = None,
                             allResultDigits:bool = False,
                             scientificNotationThreshold:float = 10**9,
                             batchCode:str):
@@ -709,6 +795,7 @@ def _singleModuleDotOutDataFrame(connection, component, *,
     The datasheet data in the component are not generated by this function."""
     
     DF = _singleComponentDotOutDataFrame(connection, component,
+        blueprint=blueprint,
         allResultDigits=allResultDigits,
         scientificNotationThreshold=scientificNotationThreshold)
     if DF is None: return None
@@ -755,7 +842,8 @@ class DotOutFileManager:
     def _writeHeader(cls, filePath:Path, header:str):
 
         cls._writeLine(filePath, header)
-        cls._writeLine(filePath, '') # Add additional empty line before data
+        cls._writeLine(filePath, '\n') # Add additional empty line before data
+        mom.log.spare('(Written Header)')
 
     @classmethod
     def _createDotOutFile(cls, filePath:Path, header:str):
@@ -764,7 +852,6 @@ class DotOutFileManager:
             raise DotOutManagementException(f'File already exists. Cannot create. ({filePath}).')
         
         cls._writeHeader(filePath, header)
-        print('(Written Header)')
 
     @classmethod
     def appendData(cls, filePath:Path, singleComponentDotOutDF:DataFrame):
@@ -881,19 +968,31 @@ class DotOutManager(ABC):
 
     def __init__(self, connection,
             folderPath:Path,
+            blueprint:mom.blueprint = None,
             processStage:str = None,
             mongoDBupload:bool = False,
         ):
+        """If blueprint is passed, the datasheet definition is retrieved from
+        the passed document (meant for testing purposes)."""
+
         self.connection = connection
+        self.blueprint = blueprint
         self.folderPath = folderPath
         self.mongoDBupload = mongoDBupload
         self.processStage = processStage
 
+        log.debug('[DotOutManager.__init__] DotOutManager initialized.')
+        log.debug(f'[DotOutManager.__init__] connection: {connection}')
+        log.debug(f'[DotOutManager.__init__] folderPath: {folderPath}')
+        log.debug(f'[DotOutManager.__init__] blueprint: {blueprint}')
+        log.debug(f'[DotOutManager.__init__] processStage: {processStage}')
+        log.debug(f'[DotOutManager.__init__] mongoDBupload: {mongoDBupload}')
+
     def _generateDotOutData(self, component):
-        generateComponentDotOutData(component, self.connection, self.processStage)
+        generateComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
 
     def _generateAndSaveDotOutData(self, component):
-        generateAndSaveComponentDotOutData(component, self.connection,  self.processStage)
+        generateAndSaveComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
 
     @abstractmethod
     def _dotOutDF(self, component):
@@ -957,8 +1056,47 @@ class DotOutManager(ABC):
             _logError(e)
             return None
 
+    def _hasRelevantData(self, component) -> bool:
+        """Returns True if the component has entries in its test history with
+        data to be saved to the .out file, False otherwise.
 
-    def saveDotOutLine(self, component):
+        If the component has no testHistory, the method returns False.
+
+        Then, if the manager processStage field is None, the method returns True.
+
+        When processStage is different from None, this method searches the
+        component history for entries that have that processStage. If any is
+        found, the method returns True, otherwise it returns False.
+        
+        Returns True or False."""
+
+        testHistory = component.getField('testHistory', verbose = False,
+                                         valueIfNotFound = None,
+                                         notFoundValues = [[], None])
+        if testHistory is None:
+            return False
+        
+        if hasattr(self, 'processStage'):
+            stage = self.processStage
+            if stage is None:
+                return True
+            else:
+                stages = [stage]
+        
+        if hasattr(self, 'processStages'):
+            stages = self.processStages
+            if stages is None:
+                return True
+        
+        for entry in testHistory:
+            stage = entry.get('processStage')
+
+            if stage in stages:
+                return True
+
+        return False
+
+    def saveDotOutLine(self, component) -> Path:
         """This method is the main method of the class. It is used to generate
         the dot-out dataframe for the component, and then to save it to the .out
         file.
@@ -972,29 +1110,34 @@ class DotOutManager(ABC):
 
         Finally, the method appends the data to the .out file using the
         appendData method of the DotOutFileManager class.
+
+        Returns the file path where the data has been saved, or None if the
+        process has failed at any point.
         """
 
         log.important(f'Started saving dot out line for component "{component.name}".')
 
-        if self.mongoDBupload is True:
-            log.important(f'mongoDBupload = True: Generating datasheet for component and uploading to MongoDB.')
+        if not self._hasRelevantData(component):
+            log.warning(f'The component "{component.name}" has no relevant data to append on the dot out file.')
+            return None
 
-            try:
+        try:
+            if self.mongoDBupload is True:
+                log.important(f'mongoDBupload = True: Generating datasheet for component and uploading to MongoDB.')
                 self._generateAndSaveDotOutData(component)
-            except Exception as e:
-                log.error('[DotOutManager.saveDotOutLine] Something went wrong when generating and uploading datasheet data to MongoDB.')
-                _logError(e)
-                return None
-        
-        else:
-            log.important(f'mongoDBupload = False: Generating datasheet for component (without uploading to MongoDB).')
-            
-            try:
+            else:
+                log.important(f'mongoDBupload = False: Generating datasheet for component (without uploading to MongoDB).')
                 self._generateDotOutData(component)
-            except Exception as e:
-                log.error('[DotOutManager.saveDotOutLine] Something went wrong when generating datasheet data to MongoDB.')
-                _logError(e)
-                return None
+
+        except FailedDatasheetGeneration as e:
+            log.warning(f'The generation of the datasheet of component "{component.name}" has failed. Dot out line is not generated.')
+            return None
+
+        except Exception as e:
+            log.error('[DotOutManager.saveDotOutLine] Something went wrong when generating and uploading datasheet data to MongoDB.')
+            _logError(e)
+            return None
+        
         
         log.important(f'Generating dot out dataframe.')
 
@@ -1005,6 +1148,8 @@ class DotOutManager(ABC):
         if filePath is None: return None
 
         DotOutFileManager.appendData(filePath, DF)
+
+        return filePath
 
 
 class DotOutManager_Modules(DotOutManager):
@@ -1017,12 +1162,13 @@ class DotOutManager_Modules(DotOutManager):
     """
 
     def __init__(self, connection, folderPath:Path,
+                 blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
-        super().__init__(connection, folderPath, processStage, mongoDBupload)
+        super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload)
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
 
@@ -1048,6 +1194,7 @@ class DotOutManager_Modules(DotOutManager):
     def _dotOutDF(self, module) -> DataFrame:
         
         DF = _singleModuleDotOutDataFrame(self.connection, module,
+                blueprint = self.blueprint,
                 allResultDigits = self.allResultDigits,
                 scientificNotationThreshold = self.scientificNotationThreshold,
                 batchCode = module.getField('batch', verbose = False))
@@ -1081,14 +1228,21 @@ class DotOutManager_Chips(DotOutManager):
     """
 
     def __init__(self, connection, folderPath:Path,
+                 blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
-        super().__init__(connection, folderPath, processStage, mongoDBupload)
+        
+        super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload)
+        
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
+
+        log.debug('[DotOutManager_Chips.__init__] DotOutManager_Chips initialized.')
+        log.debug(f'[DotOutManager_Chips.__init__] allResultDigits: {allResultDigits}')
+        log.debug(f'[DotOutManager_Chips.__init__] scientificNotationThreshold: {scientificNotationThreshold}')
 
     @staticmethod
     def _processStageTag(processStage) -> str:
@@ -1116,7 +1270,7 @@ class DotOutManager_Chips(DotOutManager):
             fileStem = waferName
 
         if self.processStage is not None:
-            fileStem += f'_{self._processStageTag(self.processStage)}'        
+            fileStem += f'_{self._processStageTag(self.processStage)}'
 
         fileName = fileStem + '.out'
         filePath = self.folderPath / fileName
@@ -1124,14 +1278,21 @@ class DotOutManager_Chips(DotOutManager):
 
     def _dotOutDF(self, chip) -> DataFrame:
 
-        with mom.recallDocuments():
-            wafer = chip.ParentComponent.retrieveElement(self.connection)
+        # with mom.recallDocuments():
+        wafer = chip.ParentComponent.retrieveElement(self.connection)
+        if wafer is None:
+            log.warning(f'Could not retrieve wafer for chip "{chip.name}".')
+            waferName = '<No wafer name>'
+        else:
+            waferName = wafer.name
+
         chipName = chip.name
 
         DF = _singleChipDotOutDataFrame(self.connection, chip,
+                blueprint = self.blueprint,
                 allResultDigits = self.allResultDigits,
                 scientificNotationThreshold = self.scientificNotationThreshold,
-                waferName = wafer.name)
+                waferName = waferName)
         if DF is None: return None
 
         # Parsing general information for MMS
@@ -1182,13 +1343,15 @@ class DotOutManager_Chips(DotOutManager):
 class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
 
     def __init__(self, connection, folderPath:Path,
+                 blueprint:mom.blueprint = None,
                  processStage_orStages:str|list[str] = None,
                  mongoDBupload:bool = False,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9):
+        
         super().__init__(connection, folderPath,
-                         processStage_orStages, mongoDBupload, allResultDigits,
-                         scientificNotationThreshold)
+                         blueprint, processStage_orStages, mongoDBupload,
+                         allResultDigits, scientificNotationThreshold)
 
         if self.processStage is None:
             self.processStages = None
@@ -1197,13 +1360,15 @@ class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
         else:
             self.processStages = [self.processStage]
 
-        log.important(f'Process stages: {self.processStages}')
-        log.important(f'Test tag (stage): {self._processStageTag(self.processStage)}')
-        log.important(f'Test tag (stages): {self._processStageTag(self.processStages)}')
+        log.debug(f'[dotOutManager_MixedStagesCordobaChips.__init__] dotOutManager_MixedStagesCordobaChips initialized.')
+        log.debug(f'[dotOutManager_MixedStagesCordobaChips.__init__] processStages: {self.processStages}')
 
-    @classmethod
+
+    # @classmethod
     def _processStageTag(cls, processStage) -> str:
         
+        superTag = super()._processStageTag
+
         if isinstance(processStage, list):
             
             for stage in processStage:
@@ -1211,18 +1376,19 @@ class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
                     return stage
                 if stage in STAGES_MONGODB_TO_MMS:
                     return STAGES_MONGODB_TO_MMS[stage]
-        
+                
+            return '_'.join([superTag(stage) for stage in processStage])
         else:
-            return super()._processStageTag(processStage)
+            return superTag(processStage)
 
 
     def _generateDotOutData(self, component):
-        with mom.logMode(mom.log, 'DEBUG'):
-            generateComponentDotOutData(component, self.connection, self.processStages)
+        # Passing self.processStages instead of self.processStage
+        generateComponentDotOutData(component, self.connection, self.blueprint, self.processStages)
 
     def _generateAndSaveDotOutData(self, component):
-        with mom.logMode(mom.log, 'DEBUG'):
-            generateAndSaveComponentDotOutData(component, self.connection,  self.processStages)
+        # Passing self.processStages instead of self.processStage
+        generateAndSaveComponentDotOutData(component, self.connection, self.blueprint, self.processStages)
 
 # ==============================================================================
 # Running Out2EDC
