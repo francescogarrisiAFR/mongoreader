@@ -14,6 +14,10 @@ from functools import wraps
 from subprocess import run, CompletedProcess, CalledProcessError, TimeoutExpired
 from traceback import format_exc
 
+
+# ------------------------------------------------------------------------------
+# Constants
+
 GENERAL_FIELDS_MONGODB = ['component', 'componentID',
         'earliestTestDate', 'latestTestDate', 'bench', 'operator']
 
@@ -27,6 +31,68 @@ STAGES_MONGODB_TO_MMS = dict(zip(OLDSTAGES_MONGODB, STAGES_MMS))
 
 PART_NUMBERS = { # <Wafer two-letter acronym>: <Part Number>
     'CA': 'PA015945', # Cordoba
+}
+
+# Chip IDs
+
+# Cordoba M version
+CORDOBA_M1_CHIP_IDS = {
+    'A00-COR-M1': 1,
+    'A01-COR-M1': 2,
+    'A02-COR-M1': 3,
+    'A03-COR-M1': 4,
+    'A04-COR-M1': 5,
+    'A05-COR-M1': 6,
+    'A06-COR-M1': 7,
+    'A07-COR-M1': 8,
+    'B09-COR-M1': 10,
+    'B08-COR-M1': 11,
+    'B07-COR-M1': 12,
+    'B06-COR-M1': 13,
+    'B05-COR-M1': 14,
+    'B04-COR-M1': 15,
+    'B03-COR-M1': 16,
+    'B02-COR-M1': 17,
+    'B01-COR-M1': 18,
+    'B00-COR-M1': 19,
+    'C00-COR-M1': 20,
+    'C01-COR-M1': 21,
+    'C02-COR-M1': 22,
+    'C03-COR-M1': 23,
+    'C04-COR-M1': 24,
+    'C05-COR-M1': 25,
+    'C06-COR-M1': 26,
+    'C07-COR-M1': 27,
+    'C08-COR-M1': 28,
+    'C09-COR-M1': 29,
+    'D09-COR-M1': 30,
+    'D08-COR-M1': 31,
+    'D07-COR-M1': 32,
+    'D06-COR-M1': 33,
+    'D05-COR-M1': 34,
+    'D04-COR-M1': 35,
+    'D03-COR-M1': 36,
+    'D02-COR-M1': 37,
+    'D01-COR-M1': 38,
+    'D00-COR-M1': 39,
+    'E00-COR-M1': 40,
+    'E01-COR-M1': 41,
+    'E02-COR-M1': 42,
+    'E03-COR-M1': 43,
+    'E04-COR-M1': 44,
+    'E05-COR-M1': 45,
+    'E06-COR-M1': 46,
+    'E07-COR-M1': 47,
+    'E08-COR-M1': 48,
+    'E09-COR-M1': 49,
+    'F07-COR-M1': 51,
+    'F06-COR-M1': 52,
+    'F05-COR-M1': 53,
+    'F04-COR-M1': 54,
+    'F03-COR-M1': 55,
+    'F02-COR-M1': 56,
+    'F01-COR-M1': 57,
+    'F00-COR-M1': 58,
 }
 
 # ------------------------------------------------------------------------------
@@ -93,7 +159,11 @@ def _isNumberNone(number):
 def _logError(e):
 
     log.error(e)
-    log.error(f'{format_exc(e.__traceback__)}')
+    try:
+        log.error(f'{format_exc(e.__traceback__)}')
+    except:
+        log.error(f'Could not log traceback for error {e}.')
+    
 
 def _acronymsFromDSdefinition(DSdefintion:list, locGroupDict:dict):
     """Generates the ".out"-like list of acronyms for a datasheet definition.
@@ -895,17 +965,22 @@ def chipID(chipName):
 
     return ID
 
-def chipID_cordoba(chipName):
-    """Chip name is in the form "3CAxxxx_COR-yy-zz" and has to be
+def chipID_cordoba(chipName:_singleModuleDotOutDataFrame) -> str:
+    """Depending on the wafer version, the chip name is either in the form
+    "3CAxxxx_COR-yy-zz" or "3CAxxxx_Cxx-COR-yy", and has to be
     brought to "3CAxxxxww", where ww depends on yy and zz:
     
     rules:
-        COR-V1-01 -> 01 (V1 -> +0)
-        COR-V2-03 -> 33 (V2 -> +30)
-        COR-V3-06 -> 51 (V3 -> +45)
+        "COR-V1-01" -> "01" (V1 -> +0)
+        "COR-V2-03" -> "33" (V2 -> +30)
+        "COR-V3-06" -> "51" (V3 -> +45)
     """
 
-    waferName, chipSerial = chipName.split('_')
+    _, chipSerial = chipName.split('_')
+
+    if chipSerial in CORDOBA_M1_CHIP_IDS:
+        id = CORDOBA_M1_CHIP_IDS[chipSerial]
+        return f'{id:02}'
 
     _, V, N = chipSerial.split('-')
     N = int(N)
@@ -939,13 +1014,25 @@ def LOT_ID(chipName:str):
 def chipType(chipName:str):
     """E.g.
     chipName: "3CAxxxx_COR-V1-01" -> "COR-V1".
+    chipName: "3CAxxxx_E08-COR-M1" -> "COR-M1".
     chipName: "3DR0001_DR8-01" -> "DR8".
     chipName: "2BI0016_05-SE -> "SE"    
     """
 
-    if any([x in chipName for x in ['COR', 'DR']]):
-        _, chipSerial = chipName.split('_', maxsplit = 1)
-        chipType = chipSerial.rsplit('-', maxsplit = 1)[0]
+    if 'COR' in chipName:
+        
+        _, chipSerial = chipName.split('_')
+
+        if chipSerial in CORDOBA_M1_CHIP_IDS:
+            return chipSerial.split('-', maxsplit=1)[1]
+
+        serialParts = serial.split('-')
+        chipType = serialParts[0] + '-' + serialParts[1] 
+
+    elif 'DR' in chipName:
+        serial = chipName.split('_')[1]
+        chipType = serial.rsplit('-', maxsplit = 1)[0]
+
     else:
         raise NotImplementedError(f'chipType() not implemented for chip "{chipName}".')
 
