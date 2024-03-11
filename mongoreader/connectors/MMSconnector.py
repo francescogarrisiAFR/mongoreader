@@ -1058,15 +1058,11 @@ class DotOutManager(ABC):
             blueprint:mom.blueprint = None,
             processStage:str = None,
             mongoDBupload:bool = False,
+            MMSupload:bool = True,
+            Out2EDCpath:Path = None,
         ):
         """If blueprint is passed, the datasheet definition is retrieved from
         the passed document (meant for testing purposes)."""
-
-        self.connection = connection
-        self.blueprint = blueprint
-        self.folderPath = folderPath
-        self.mongoDBupload = mongoDBupload
-        self.processStage = processStage
 
         log.debug('[DotOutManager.__init__] DotOutManager initialized.')
         log.debug(f'[DotOutManager.__init__] connection: {connection}')
@@ -1074,6 +1070,19 @@ class DotOutManager(ABC):
         log.debug(f'[DotOutManager.__init__] blueprint: {blueprint}')
         log.debug(f'[DotOutManager.__init__] processStage: {processStage}')
         log.debug(f'[DotOutManager.__init__] mongoDBupload: {mongoDBupload}')
+        log.debug(f'[DotOutManager.__init__] MMSupload: {MMSupload}')
+        log.debug(f'[DotOutManager.__init__] Out2EDCpath: {Out2EDCpath}')
+
+        self.connection = connection
+        self.blueprint = blueprint
+        self.folderPath = folderPath
+        self.mongoDBupload = mongoDBupload
+        self.processStage = processStage
+        self.MMSupload = MMSupload
+
+        if self.MMSupload is True:
+            _checkExePath(Out2EDCpath)
+            self.Out2EDCpath = Out2EDCpath
 
     def _generateDotOutData(self, component):
         generateComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
@@ -1225,7 +1234,6 @@ class DotOutManager(ABC):
             _logError(e)
             return None
         
-        
         log.important(f'Generating dot out dataframe.')
 
         DF = self.__dotOutDF(component)
@@ -1236,8 +1244,11 @@ class DotOutManager(ABC):
 
         DotOutFileManager.appendData(filePath, DF)
 
-        return filePath
+        if self.uploadToMMS is True:
+            log.important(f'Uploading to MMS.')
+            runOut2EDC(self.Out2EDCpath, filePath)
 
+        return filePath   
 
 class DotOutManager_Modules(DotOutManager):
     """This class is used to manage the generation of dot-out tables for
@@ -1252,10 +1263,13 @@ class DotOutManager_Modules(DotOutManager):
                  blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
+                 MMSupload:bool = True,
+                 Out2EDCpath:Path = None,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
-        super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload)
+        super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload,
+                         MMSupload, Out2EDCpath)
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
 
@@ -1318,11 +1332,14 @@ class DotOutManager_Chips(DotOutManager):
                  blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
+                 MMSupload:bool = True,
+                 Out2EDCpath:Path = None,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
         
-        super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload)
+        super().__init__(connection, folderPath, blueprint, processStage,
+                         mongoDBupload, MMSupload, Out2EDCpath)
         
         self.allResultDigits = allResultDigits
         self.scientificNotationThreshold = scientificNotationThreshold
@@ -1433,11 +1450,14 @@ class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
                  blueprint:mom.blueprint = None,
                  processStage_orStages:str|list[str] = None,
                  mongoDBupload:bool = False,
+                 MMSupload:bool = True,
+                 Out2EDCpath:Path = None,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9):
         
         super().__init__(connection, folderPath,
                          blueprint, processStage_orStages, mongoDBupload,
+                         MMSupload, Out2EDCpath,
                          allResultDigits, scientificNotationThreshold)
 
         if self.processStage is None:
@@ -1479,20 +1499,29 @@ class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
 
 # ==============================================================================
 # Running Out2EDC
-            
-def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
+        
+def _checkDotOutPath(dotOutPath:Path) -> None:
+    
+    if not isinstance(dotOutPath, Path):
+        raise TypeError("dotOutPath must be a pathlib.Path object.")
+    if not dotOutPath.suffix == ".out":
+        raise ValueError("dotOutPath must point to an .out file.")
 
+def _checkExePath(exePath:Path) -> None:
+    
     if not isinstance(exePath, Path):
         raise TypeError("exePath must be a pathlib.Path object.")
     if not exePath.suffix == ".exe":
         raise ValueError("exePath must point to an .exe file.")
     if not exePath.stem == 'Out2EDC':
         raise ValueError('exePath must point to "Out2EDC.exe".')
+    if not exePath.exists():
+        raise FileNotFoundError(f'File "{exePath}" does not exist.')
+            
+def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
 
-    if not isinstance(dotOutPath, Path):
-        raise TypeError("dotOutPath must be a pathlib.Path object.")
-    if not dotOutPath.suffix == ".out":
-        raise ValueError("dotOutPath must point to an .out file.")
+    _checkExePath(exePath)
+    _checkDotOutPath(dotOutPath)
     
     command = f'"{exePath}" "{dotOutPath}"'
 
@@ -1507,7 +1536,7 @@ def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
         log.error(f"Python exception: {e}")
 
     except TimeoutExpired as e:
-        log.error('Timeout (5 sec) reachec when running Out2EDC.exe')
+        log.error('Timeout (5 sec) reached when running Out2EDC.exe')
         log.error('STDOUT: ' + e.stdout.decode('utf-8'))
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
