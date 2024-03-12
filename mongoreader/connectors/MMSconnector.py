@@ -1244,7 +1244,7 @@ class DotOutManager(ABC):
 
         DotOutFileManager.appendData(filePath, DF)
 
-        if self.uploadToMMS is True:
+        if self.MMSupload is True:
             log.important(f'Uploading to MMS.')
             runOut2EDC(self.Out2EDCpath, filePath)
 
@@ -1523,7 +1523,8 @@ def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
     _checkExePath(exePath)
     _checkDotOutPath(dotOutPath)
     
-    command = f'"{exePath}" "{dotOutPath}"'
+    # command = f'"{exePath}" "{dotOutPath}"'
+    command = [f'{exePath}', f'{dotOutPath}']
 
     try:
         run(command, shell = True, capture_output=True, check = True, timeout=5)
