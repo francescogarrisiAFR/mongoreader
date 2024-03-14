@@ -1,6 +1,7 @@
 from mongoutils import queryUtils as qu
 import mongoreader.wafers as morw
 import mongoreader.modules as morm
+from .MMSconnectors_benchConfig import benchConfig
 from datautils import dataClass
 import mongomanager as mom
 from mongomanager.errors import FieldNotFound
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from functools import wraps
 from subprocess import run, CompletedProcess, CalledProcessError, TimeoutExpired
 from traceback import format_exc
+from socket import gethostname
+import re
 
 
 # ------------------------------------------------------------------------------
@@ -109,6 +112,10 @@ class FailedDatasheetGeneration(DotOutException):
 
     pass
 
+class MissingBenchConfigException(DotOutException):
+    """Raised when a bench configuration is not found."""
+    
+    pass
 
 
 # ------------------------------------------------------------------------------
@@ -948,6 +955,18 @@ class DotOutFileManager:
 # ==============================================================================
 # Support functions
 
+def hostname() -> str:
+    return gethostname().upper()
+
+def getBenchConfig(hostname:str) -> dict:
+
+    for config in benchConfig:
+        if config['hostname'] == hostname:
+            return config
+    
+    raise MissingBenchConfigException(f'No bench configuration found for hostname "{hostname}".')
+
+
 def chipID(chipName):
     """E.g. "3CAxxxx_COR-V1-01" -> "01".
     
@@ -1054,7 +1073,7 @@ class DotOutManager(ABC):
     """
 
     def __init__(self, connection,
-            folderPath:Path,
+            folderPath:Path = None,
             blueprint:mom.blueprint = None,
             processStage:str = None,
             mongoDBupload:bool = False,
@@ -1084,6 +1103,11 @@ class DotOutManager(ABC):
             _checkExePath(Out2EDCpath)
             self.Out2EDCpath = Out2EDCpath
 
+        if self.folderPath is None:
+            benchConfig = getBenchConfig(hostname())
+            self.folderPath = Path(benchConfig['folderPath'])
+            log.info(f'folderPath not passed. Using default for bench: "{self.folderPath}"')
+            
     def _generateDotOutData(self, component):
         generateComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
 
@@ -1259,7 +1283,7 @@ class DotOutManager_Modules(DotOutManager):
     generates the dot-out dataframe for a single module.
     """
 
-    def __init__(self, connection, folderPath:Path,
+    def __init__(self, connection, folderPath:Path = None,
                  blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
@@ -1308,8 +1332,34 @@ class DotOutManager_Modules(DotOutManager):
                 'component': 'ChipID',
             }
         )
+        _prependConstantColumn(DF, 'Package_ID', modulePackageID(module))
 
         return DF
+    
+
+def modulePackageID(module) -> str:
+
+    moduleName = module.name
+    if moduleName is None: return ""
+
+    match = re.search(r'K\d{5}', moduleName)
+    return match.group(0) if match else ""
+    
+# class DotOutManager_Modules_quick(DotOutManager_Modules):
+
+#     @staticmethod
+#     def _modulePackageID(module) -> str:
+
+#         moduleName = module.name
+#         if moduleName is None: return ""
+
+#         match = re.search(f'K\d{5}', moduleName)
+#         return 'K' + match.group(0) if match else ""
+
+#     def _dotOutDF(self, module) -> DataFrame:
+
+#         DF = super()._dotOutDF(module)
+#         _prependConstantColumn(DF, 'Package_ID', self._modulePackageID(module))
 
 
 class DotOutManager_Chips(DotOutManager):
@@ -1328,7 +1378,7 @@ class DotOutManager_Chips(DotOutManager):
     as well as the ChipID, type, LOT_ID, and DUT_ID columns.
     """
 
-    def __init__(self, connection, folderPath:Path,
+    def __init__(self, connection, folderPath:Path = None,
                  blueprint:mom.blueprint = None,
                  processStage:str = None,
                  mongoDBupload:bool = False,
@@ -1446,7 +1496,7 @@ class DotOutManager_Chips(DotOutManager):
 
 class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
 
-    def __init__(self, connection, folderPath:Path,
+    def __init__(self, connection, folderPath:Path = None,
                  blueprint:mom.blueprint = None,
                  processStage_orStages:str|list[str] = None,
                  mongoDBupload:bool = False,
