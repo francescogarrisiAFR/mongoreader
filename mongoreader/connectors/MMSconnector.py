@@ -19,7 +19,7 @@ import re
 
 
 # ------------------------------------------------------------------------------
-# Constants
+# Constants and settings
 
 GENERAL_FIELDS_MONGODB = ['component', 'componentID',
         'earliestTestDate', 'latestTestDate', 'bench', 'operator']
@@ -97,6 +97,8 @@ CORDOBA_M1_CHIP_IDS = {
     'F06-COR-M1': 54,
     'F07-COR-M1': 55
 }
+
+DOT_OUT_LOG_FOLDER = Path(r"T:\Projects\BE_folder\Software automation\Dot Out Generation\Dot Out Generation Logs")
 
 # ------------------------------------------------------------------------------
 # Exceptions
@@ -1567,6 +1569,46 @@ def _checkExePath(exePath:Path) -> None:
         raise ValueError('exePath must point to "Out2EDC.exe".')
     if not exePath.exists():
         raise FileNotFoundError(f'File "{exePath}" does not exist.')
+    
+def _determineDotOutLogPath(dotOutLogFolder:Path) -> Path:
+    """The log file is determined based on the hostname of the machine where the
+    script is running and from the month and year of the current date."""
+
+    if not isinstance(dotOutLogFolder, Path):
+        raise TypeError(f"dotOutLogFolder must be a pathlib.Path object (it is {type(dotOutLogFolder)}).")
+
+    fileStem = f'DotOutGenerationLog_{gethostname().upper()}_' + mom.awareNow().strftime('%Y-%m') + '.log'
+
+    fileStem = '_'.join([
+        'DotOutGenerationLog',
+        gethostname().upper(),
+        mom.awareNow().strftime('%Y-%m'),
+    ]) + '.log'
+
+    return dotOutLogFolder / fileStem
+
+def _logExecutionOfOut2EDC(successfully:bool, dotOutLogPath:Path = None) -> None:
+
+    if dotOutLogPath is not None:
+        if not isinstance(dotOutLogPath, Path):
+            raise TypeError(f"dotOutLogPath must be a pathlib.Path object or None (it is {type(dotOutLogPath)}).")
+    if not isinstance(successfully, bool):
+        raise TypeError(f"succesfully must be a boolean (it is {type(successfully)}).")
+
+    if dotOutLogPath is None:
+        dotOutLogPath = _determineDotOutLogPath(DOT_OUT_LOG_FOLDER)
+
+    if successfully is True:
+        message = f'{mom.awareNow()} - {hostname()} - OUT2EDC successfully executed.'
+    else:
+        message = f'{mom.awareNow()} - {hostname()} - OUT2EDC execution failed.'
+
+    try:
+        with open(dotOutLogPath, 'a') as fileOut:
+            fileOut.write(message + '\n')
+    except Exception as e:
+        log.error(f'An error occurred when logging the execution of OUT2EDC to file "{dotOutLogPath}": {e}.')
+
             
 def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
 
@@ -1578,18 +1620,26 @@ def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
 
     try:
         run(command, shell = True, capture_output=True, check = True, timeout=5)
-    
+
     except CalledProcessError as e:
         log.error('An error occurred with running OUT2EDC.exe')
         log.error(f'Execution exit code: {e.returncode}')
         log.error('STDOUT: ' + e.stdout.decode('utf-8'))
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
+        _logExecutionOfOut2EDC(False)
 
     except TimeoutExpired as e:
         log.error('Timeout (5 sec) reached when running Out2EDC.exe')
         log.error('STDOUT: ' + e.stdout.decode('utf-8'))
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
+        _logExecutionOfOut2EDC(False)
+
+    except Exception as e:
+        log.error(f"An error occurred with running OUT2EDC.exe: {e}")
+        _logExecutionOfOut2EDC(False)
+
     else:
         log.info(f"OUT2EDC successfully executed ({command}).")
+        _logExecutionOfOut2EDC(True)
