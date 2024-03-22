@@ -1778,7 +1778,8 @@ def _logExecutionOfOut2EDC(successfully:bool, dotOutLogPath:Path = None) -> None
         log.error(f'An error occurred when logging the execution of OUT2EDC to file "{dotOutLogPath}": {e}.')
 
             
-def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
+def runOut2EDC(exePath:Path, dotOutPath:Path,
+               *, raiseExceptions:bool = True) -> None:
 
     _checkExePath(exePath)
     _checkDotOutPath(dotOutPath)
@@ -1796,6 +1797,7 @@ def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
         _logExecutionOfOut2EDC(False)
+        if raiseExceptions: raise e
 
     except TimeoutExpired as e:
         log.error('Timeout (5 sec) reached when running Out2EDC.exe')
@@ -1803,10 +1805,12 @@ def runOut2EDC(exePath:Path, dotOutPath:Path) -> None:
         log.error('STDERR: ' + e.stderr.decode('utf-8'))
         log.error(f"Python exception: {e}")
         _logExecutionOfOut2EDC(False)
+        if raiseExceptions: raise e
 
     except Exception as e:
         log.error(f"An error occurred with running OUT2EDC.exe: {e}")
         _logExecutionOfOut2EDC(False)
+        if raiseExceptions: raise e
 
     else:
         log.info(f"OUT2EDC successfully executed ({command}).")
