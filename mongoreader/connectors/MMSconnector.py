@@ -1392,13 +1392,47 @@ class DotOutManager_Modules(DotOutManager):
         _deleteColumns(DF, ['componentID'])
         _renameColumns(DF,
             {
-                'batch': 'LOT_ID',
-                'component': 'ChipID',
+                # 'batch': 'LOT_ID',
+                'component': 'Module_Name',
             }
         )
         _prependConstantColumn(DF, 'Package_ID', modulePackageID(module))
 
+        # Changing column names to append the stage acronym
+        self._renameColumnsForStage(DF) # Works even if processStage is None
+
         return DF
+    
+    def _renameStageMap(self, DF:DataFrame) -> dict:
+        """This method returns a dictionary that can be used to rename the
+        columns of the dot-out dataframe to append the process stage acronym to
+        them."""
+
+        if self.processStage is None:
+            raise DotOutManagementException('No process stage has been defined, thus the stage map cannot be generated.')
+        
+        stageTag = self._processStageTag(self.processStage)
+        
+        oldColumns = list(DF.columns)
+
+        newColumns = []
+        for col in oldColumns:
+            if col in ['Package_ID', 'batch', 'Module_Name']:
+                newColumns.append(col)
+            else:
+                newColumns.append(f'{col}_{stageTag}')
+
+        return dict(zip(oldColumns, newColumns))
+    
+    def _renameColumnsForStage(self, DF:DataFrame) -> None:
+        """This method renames the columns of the dot-out dataframe to append
+        the process stage acronym to them."""
+
+        if self.processStage is None:
+            return
+        
+        else:
+            _renameColumns(DF, self._renameStageMap(DF))
     
 
 def modulePackageID(module) -> str:
