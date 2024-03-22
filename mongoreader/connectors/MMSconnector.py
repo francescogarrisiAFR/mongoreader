@@ -1082,8 +1082,30 @@ class DotOutManager(ABC):
             MMSupload:bool = True,
             Out2EDCpath:Path = None,
         ):
-        """If blueprint is passed, the datasheet definition is retrieved from
-        the passed document (meant for testing purposes)."""
+        """Constructor method (__init__) of DotOutManager.
+
+        Args:
+            connection (mom.connection): The connection to the MongoDB database.
+            folderPath(pathlib.Path, optional): The path to the folder where the
+                .out files are saved. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig.
+            blueprint (mom.blueprint, optional): If passed, the datasheet
+                definition is retrieved from the blueprint. Meant for testing
+                purposes. Defaults to None.
+            processStage (str, optional): The process stage for which the data
+                is generated. If None, the data is generated for all process
+                stages. Defaults to None.
+            mongoDBupload (bool, optional): If True, the generated data (the
+                component datasheet) is uploaded to the database. Defaults to
+                False.
+            MMSupload (bool, optional): If True, the line appended to the .out
+                file is also uploaded to the MMS database using the Out2EDC
+                executable. Defaults to True.
+            Out2EDCpath (pathlib.Path, optional): The path to the local 
+                Out2EDC.exe executable. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig. Defaults to
+                None.
+        """
 
         log.debug('[DotOutManager.__init__] DotOutManager initialized.')
         log.debug(f'[DotOutManager.__init__] connection: {connection}')
@@ -1100,10 +1122,19 @@ class DotOutManager(ABC):
         self.mongoDBupload = mongoDBupload
         self.processStage = processStage
         self.MMSupload = MMSupload
+        self.Out2EDCpath = Out2EDCpath
 
+        if self.MMSupload is True and self.Out2EDCpath is None:
+
+            benchConfig = getBenchConfig(hostname())
+            pathString = benchConfig.get('localOut2EDCpath')
+            if pathString is None:
+                raise DotOutManagementException('MMSupload is True; Out2EDCpath not passed and not found in bench configuration.')
+            self.Out2EDCpath = Path(pathString)
+            log.info(f'Out2EDCpath not passed. Using default for bench: "{self.Out2EDCpath}"')
+        
         if self.MMSupload is True:
-            _checkExePath(Out2EDCpath)
-            self.Out2EDCpath = Out2EDCpath
+            _checkExePath(self.Out2EDCpath)
 
         if self.folderPath is None:
             benchConfig = getBenchConfig(hostname())
@@ -1294,6 +1325,37 @@ class DotOutManager_Modules(DotOutManager):
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
+        """
+        Constructor method (__init__) of DotOutManager_Modules.
+
+        Args:
+            connection (mom.connection): The connection to the MongoDB database.
+            folderPath(pathlib.Path, optional): The path to the folder where the
+                .out files are saved. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig.
+            blueprint (mom.blueprint, optional): If passed, the datasheet
+                definition is retrieved from the blueprint. Meant for testing
+                purposes. Defaults to None.
+            processStage (str, optional): The process stage for which the data
+                is generated. If None, the data is generated for all process
+                stages. Defaults to None.
+            mongoDBupload (bool, optional): If True, the generated data (the
+                component datasheet) is uploaded to the database. Defaults to
+                False.
+            MMSupload (bool, optional): If True, the line appended to the .out
+                file is also uploaded to the MMS database using the Out2EDC
+                executable. Defaults to True.
+            Out2EDCpath (pathlib.Path, optional): The path to the local 
+                Out2EDC.exe executable. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig. Defaults to
+                None.
+            allResultDigits (bool, optional): If False, float number decimal
+                parts are truncated. If True, the whole number is reported.
+            scientificNotationThreshold (float, optional): The threshold for the
+                absolute value of numbers over which they are reported in scientific
+                notation. Defaults to 10**9.
+        """
+        
         super().__init__(connection, folderPath, blueprint, processStage, mongoDBupload,
                          MMSupload, Out2EDCpath)
         self.allResultDigits = allResultDigits
@@ -1389,6 +1451,42 @@ class DotOutManager_Chips(DotOutManager):
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9,
                  ):
+        """
+        Constructor method (__init__) of DotOutManager_Chips.
+
+        N.B. This class is meant to be used for optical chips only, and only
+        when a single process stage string is of interest.
+        
+        For Cordoba chips only, multiple process stages are supported by using
+        the dotOutManager_MixedStagesCordobaChips class.
+
+        Args:
+            connection (mom.connection): The connection to the MongoDB database.
+            folderPath(pathlib.Path, optional): The path to the folder where the
+                .out files are saved. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig.
+            blueprint (mom.blueprint, optional): If passed, the datasheet
+                definition is retrieved from the blueprint. Meant for testing
+                purposes. Defaults to None.
+            processStage (str, optional): The process stage for which the data
+                is generated. If None, the data is generated for all process
+                stages. Defaults to None.
+            mongoDBupload (bool, optional): If True, the generated data (the
+                component datasheet) is uploaded to the database. Defaults to
+                False.
+            MMSupload (bool, optional): If True, the line appended to the .out
+                file is also uploaded to the MMS database using the Out2EDC
+                executable. Defaults to True.
+            Out2EDCpath (pathlib.Path, optional): The path to the local 
+                Out2EDC.exe executable. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig. Defaults to
+                None.
+            allResultDigits (bool, optional): If False, float number decimal
+                parts are truncated. If True, the whole number is reported.
+            scientificNotationThreshold (float, optional): The threshold for the
+                absolute value of numbers over which they are reported in scientific
+                notation. Defaults to 10**9.
+        """
         
         super().__init__(connection, folderPath, blueprint, processStage,
                          mongoDBupload, MMSupload, Out2EDCpath)
@@ -1506,7 +1604,43 @@ class dotOutManager_MixedStagesCordobaChips(DotOutManager_Chips):
                  Out2EDCpath:Path = None,
                  allResultDigits:bool = False,
                  scientificNotationThreshold:float = 10**9):
-        
+        """
+        Constructor method (__init__) of dotOutManager_MixedStagesCordobaChips.
+
+        N.B. This class should be used only with Cordoba chips.
+        Note that mixed stages are related to the STAGES_MONGODB_TO_MMS
+        dictionary defined at the beginning of this module.
+
+        Args:
+            connection (mom.connection): The connection to the MongoDB database.
+            folderPath(pathlib.Path, optional): The path to the folder where the
+                .out files are saved. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig.
+            blueprint (mom.blueprint, optional): If passed, the datasheet
+                definition is retrieved from the blueprint. Meant for testing
+                purposes. Defaults to None.
+            processStage_orStages (str|list[str], optional): The process stage 
+                or stages for which the data is generated. If None, the data is
+                generated for all process stages. If multiple stages are passed,
+                they should be different strings that represent the same stage.
+                Defaults to None.
+            mongoDBupload (bool, optional): If True, the generated data (the
+                component datasheet) is uploaded to the database. Defaults to
+                False.
+            MMSupload (bool, optional): If True, the line appended to the .out
+                file is also uploaded to the MMS database using the Out2EDC
+                executable. Defaults to True.
+            Out2EDCpath (pathlib.Path, optional): The path to the local 
+                Out2EDC.exe executable. If not passed, the default path for the
+                bench is retrieved from MMSconnector_benchConfig. Defaults to
+                None.
+            allResultDigits (bool, optional): If False, float number decimal
+                parts are truncated. If True, the whole number is reported.
+            scientificNotationThreshold (float, optional): The threshold for the
+                absolute value of numbers over which they are reported in scientific
+                notation. Defaults to 10**9.
+        """
+
         super().__init__(connection, folderPath,
                          blueprint, processStage_orStages, mongoDBupload,
                          MMSupload, Out2EDCpath,
