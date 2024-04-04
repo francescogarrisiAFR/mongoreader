@@ -1047,7 +1047,7 @@ def chipType(chipName:str):
         if chipSerial in CORDOBA_M1_CHIP_IDS:
             return chipSerial.split('-', maxsplit=1)[1]
 
-        serialParts = serial.split('-')
+        serialParts = chipSerial.split('-')
         chipType = serialParts[0] + '-' + serialParts[1] 
 
     elif 'DR' in chipName:

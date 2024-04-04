@@ -617,6 +617,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage = None,
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -629,6 +630,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage = 'stage 1',
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -641,6 +643,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage = 'stage 2',
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -653,6 +656,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage = 'stage 3',
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -665,6 +669,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage_orStages = ['stage 1', 'stage 2'],
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -677,6 +682,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage_orStages = ['stage 1', 'stage 3'],
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -689,6 +695,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage_orStages = ['stage 2', 'stage 3'],
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -701,6 +708,7 @@ class TestDotOutGeneration(unittest.TestCase):
                     blueprint = self.bp,
                     processStage_orStages = ['stage 1', 'stage 2', 'stage 3'],
                     mongoDBupload = False,
+                    MMSupload = False,
                     allResultDigits = False,
                     scientificNotationThreshold=10**9)
         
@@ -734,6 +742,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage = None,
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -762,6 +771,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage = 'stage 1',
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -780,6 +790,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage = 'stage 2',
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -798,6 +809,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage = 'stage 3',
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -816,6 +828,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage_orStages = ['stage 1', 'stage 2'],
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -834,6 +847,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage_orStages = ['stage 1', 'stage 3'],
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
@@ -852,6 +866,7 @@ class test_dotOutFiles(unittest.TestCase):
             blueprint = self.bp,
             processStage_orStages = ['stage 2', 'stage 3'],
             mongoDBupload = False,
+            MMSupload = False,
             allResultDigits = False,
             scientificNotationThreshold=10**9)
         
