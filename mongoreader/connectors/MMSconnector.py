@@ -2,6 +2,7 @@ from mongoutils import queryUtils as qu
 import mongoreader.wafers as morw
 import mongoreader.modules as morm
 from .MMSconnectors_benchConfig import benchConfig
+from .conversions import Converter_dotOutChipID, Converter_dotOutDUTID
 from datautils import dataClass
 import mongomanager as mom
 from mongomanager.errors import FieldNotFound
@@ -39,7 +40,7 @@ PART_NUMBERS = { # <Wafer two-letter acronym>: <Part Number>
 # Chip IDs
 
 # Cordoba M version
-CORDOBA_M1_CHIP_IDS = {
+CORDOBA_M1_SERIALS_TO_CHIP_IDS = {
     'A00-COR-M1': 0,
     'A01-COR-M1': 1,
     'A02-COR-M1': 2,
@@ -968,62 +969,11 @@ def getBenchConfig(hostname:str) -> dict:
     
     raise MissingBenchConfigException(f'No bench configuration found for hostname "{hostname}".')
 
-
-def chipID(chipName):
-    """E.g. "3CAxxxx_COR-V1-01" -> "01".
-    
-    "Valid for all chip types, including Cordoba."""
-
-    if 'COR' in chipName:
-        return chipID_cordoba(chipName)
-
-    waferName, chipSerial = chipName.split('_')
-
-    ID = chipSerial.split('-')[-1] # Should be last two digits
-
-    assert int(ID) <= 99
-    assert int(ID) >= 0
-
-    return ID
-
-def chipID_cordoba(chipName:_singleModuleDotOutDataFrame) -> str:
-    """Depending on the wafer version, the chip name is either in the form
-    "3CAxxxx_COR-yy-zz" or "3CAxxxx_Cxx-COR-yy", and has to be
-    brought to "3CAxxxxww", where ww depends on yy and zz:
-    
-    rules:
-        "COR-V1-01" -> "01" (V1 -> +0)
-        "COR-V2-03" -> "33" (V2 -> +30)
-        "COR-V3-06" -> "51" (V3 -> +45)
-    """
-
-    _, chipSerial = chipName.split('_')
-
-    if chipSerial in CORDOBA_M1_CHIP_IDS:
-        id = CORDOBA_M1_CHIP_IDS[chipSerial]
-        return f'{id:02}'
-
-    _, V, N = chipSerial.split('-')
-    N = int(N)
-    Vnum = int(V[1])
-
-    if Vnum == 1:
-        newN = N
-    elif Vnum == 2:
-        newN = N + 30
-    elif Vnum == 3:
-        newN = N + 45
-
-    chipID = f'{newN:02}'
-    return chipID
+def chipID(chipName:str) -> str:
+    return Converter_dotOutChipID.chipID_fromMongoName(chipName)
 
 def DUT_ID(chipName:str):
-    """E.g. "3CAxxxx_COR-V1-01" -> "3CAxxxx01".
-    
-    N.B. cordoba chips have special rules. See chipID_cordoba() for details."""
-
-    waferName, _ = chipName.split('_', maxsplit = 1)
-    return waferName + chipID(chipName)
+    return Converter_dotOutDUTID.DUT_ID_fromMongoName(chipName)
 
 def LOT_ID(chipName:str):
     """E.g. "3CAxxxx_COR-V1-01" -> "3CAxxxx"."""
@@ -1044,7 +994,7 @@ def chipType(chipName:str):
         
         _, chipSerial = chipName.split('_')
 
-        if chipSerial in CORDOBA_M1_CHIP_IDS:
+        if chipSerial in CORDOBA_M1_SERIALS_TO_CHIP_IDS:
             return chipSerial.split('-', maxsplit=1)[1]
 
         serialParts = chipSerial.split('-')
