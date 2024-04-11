@@ -239,7 +239,7 @@ def _generateDataRow(DSElements, testHistoryEntry:dict) -> list[dict]:
     return rawValues
 
 def _generateMetadataHeader() -> list[str]:
-    return ['DUT_ID', 'DATA_ORA', 'OP_NAME', 'BANCO']
+    return ['DUT_ID', 'DATA_ORA', 'OP_NAME', 'BANCO', 'VER_SW', 'VER_PROF', 'PROCESS_STAGE']
 
 def _generateChipID(componentName:str) -> str:
     return conv.Converter_dotOutDUTID.DUT_ID_fromMongoName(componentName)
@@ -255,6 +255,9 @@ def _generateMetadataRow(component:mom.component, testHistoryEntry:dict) -> list
         formatExecutionDate(testHistoryEntry['executionDate']),
         None,
         None,
+        None,
+        None,
+        component.processStage
     ]
 
 
@@ -284,6 +287,17 @@ def _saveReportToCSV(report:list[dict], filename:Path):
 
     with open(filename, 'w', newline='') as outFile:
         reportDF.to_csv(outFile, index = False)
+
+# --- Report checking functions ---
+
+def _readReportHeader(filename:Path) -> list[str]:
+    with open(filename, 'r') as inFile:
+        header = inFile.readline().strip().split(',')
+    
+    return header
+
+def _checkReportHeader(expectedHeader:str, reportFilePath:Path) -> bool:
+    return _readReportHeader(reportFilePath) == expectedHeader
 
 
 # ------------------------------
@@ -334,6 +348,11 @@ class GoldenSampleReporter:
         lastLineDF = DataFrame(lastLine)
 
         if self._filePath.exists():
+
+            header = list(lastLine[0].keys())
+            if not _checkReportHeader(header, self._filePath):
+                raise GoldenSampleReporterError(f'Header in file "{self._filePath}" does not match expected header.')
+
             with open(self._filePath, 'a', newline='') as outFile:
                 lastLineDF.to_csv(outFile, index = False, header = False)
         else:
