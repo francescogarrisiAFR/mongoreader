@@ -1,3 +1,4 @@
+from .MMSconnectors_benchConfig import benchConfig
 from datetime import datetime
 from pandas import DataFrame, isnull
 from pathlib import Path
@@ -6,6 +7,7 @@ from mongomanager import log
 from mongomanager.goggleFunctions import componentGoggleFunctions as cmpGGF
 import mongoreader.connectors.conversions as conv
 from datautils import dataClass
+from socket import gethostname
 
 ## TO DO ##
 
@@ -25,6 +27,17 @@ class MissingInformation(GoldenSampleReporterError):
     pass
 
 # --- Utility functions ---
+
+def hostname() -> str:
+    return gethostname().upper()
+
+def getBenchConfig(hostname:str) -> dict:
+
+    for config in benchConfig:
+        if config['hostname'] == hostname:
+            return config
+    
+    raise MissingInformation(f'No bench configuration found for hostname "{hostname}".')
 
 def _isListOfDicts(arg) -> bool:
     if isinstance(arg, list):
@@ -253,10 +266,10 @@ def _generateMetadataRow(component:mom.component, testHistoryEntry:dict) -> list
     return [
         _generateChipID(component.name),
         formatExecutionDate(testHistoryEntry['executionDate']),
-        None,
-        None,
-        None,
-        None,
+        None, # Operator name
+        None, # Bench name
+        None, # Software version
+        None, # Profile version
         component.processStage
     ]
 
@@ -281,12 +294,57 @@ def _generateCompleteReport(connection:mom.connection,
 
 # --- Report saving functions ---
 
-def _saveReportToCSV(report:list[dict], filename:Path):
-    
-    reportDF = DataFrame(report)
+def _writeHeader(header:list[str], filePath:Path):
 
-    with open(filename, 'w', newline='') as outFile:
-        reportDF.to_csv(outFile, index = False)
+    if not isinstance(header, list):
+        raise TypeError(f'header must be a list of strings (it is {type(header)}).')
+    if not all(isinstance(s, str) for s in header):
+        raise TypeError(f'Some elements of header are not strings.')
+
+    if not isinstance(filePath, Path):
+        raise TypeError(f'filePath must be a pathlib Path object (it is {type(filePath)}).')
+
+    if filePath.exists():
+        raise FileExistsError(f'File "{filePath}" already exists. Cannot overwrite.')
+    
+    with open(filePath, 'w', newline='') as outFile:
+        outFile.write(','.join(header) + '\n\n')
+
+def _appendReportLine(line:dict, filePath:Path):
+
+    if not isinstance(line, dict):
+        raise TypeError(f'line must be a dictionary (it is {type(line)}).')
+    
+    if not isinstance(filePath, Path):
+        raise TypeError(f'filePath must be a pathlib Path object (it is {type(filePath)}).')
+
+    lineDF = DataFrame([line])
+
+    # Header
+    header = list(line.keys())
+
+    if not filePath.exists():
+        _writeHeader(header, filePath)
+        
+    else:
+        if not _checkReportHeader(header, filePath):
+            raise GoldenSampleReporterError(f'Header in file "{filePath}" does not match expected header.')
+        
+    # Line
+    with open(filePath, 'a', newline='') as outFile:
+        lineDF.to_csv(outFile, index = False, header = False)
+
+def _saveReportToCSV(report:list[dict], filePath:Path):
+    
+    header = list(report[0].keys())
+
+    if not all(list(dic.keys()) == header for dic in report):
+        raise GoldenSampleReporterError('All dictionaries in the report must have the same keys.')
+
+    _writeHeader(header, filePath)
+
+    for row in report:
+        _appendReportLine(row, filePath)
 
 # --- Report checking functions ---
 
@@ -309,7 +367,8 @@ class GoldenSampleReporter:
     def __init__(self,
                  connection:mom.connection,
                  component:mom.component,
-                 filePath:Path):
+                 folderPath:Path = None,
+                 fileName:str = None):
         
         if not isinstance(connection, mom.connection):
             raise TypeError(f'connection must be a mongomanager connection object (it is {type(connection)}).')
@@ -317,12 +376,46 @@ class GoldenSampleReporter:
         if not isinstance(component, mom.component):
             raise TypeError(f'component must be a mongomanager component object (it is {type(component)}).')
         
-        if not isinstance(filePath, Path):
-            raise TypeError(f'filePath must be a pathlib Path object (it is {type(filePath)}).')
+        if folderPath is not None:
+            if not isinstance(folderPath, Path):
+                raise TypeError(f'folderPath must be a pathlib Path object (it is {type(folderPath)}).')
         
+        if fileName is not None:
+            if not isinstance(fileName, str):
+                raise TypeError(f'fileName must be a string (it is {type(fileName)}).')
+
         self._connection = connection
         self._component = component
-        self._filePath = filePath
+
+        if folderPath is None: folderPath = self._autodetermineFolderPath()
+        if fileName is None: fileName = self._autodetermineFileName()
+        self.filePath = folderPath / fileName
+
+    def __repr__(self):
+        return f'GoldenSampleReporter for component "{self._component.name}" at path "{self.filePath}".'
+
+    @property
+    def filePath(self) -> Path:
+        return self._filePath
+    
+    @filePath.setter
+    def filePath(self, newPath:Path):
+        if not isinstance(newPath, Path):
+            raise TypeError(f'filePath must be a pathlib Path object (it is {type(newPath)}).')
+        if not newPath.suffix == '.out':
+            raise ValueError(f'File path must have a ".out" extension.')
+        
+        self._filePath = newPath
+
+    def _autodetermineFolderPath(self) -> Path:
+        benchConfig = getBenchConfig(hostname())
+        pathString = benchConfig.get('goldenSampleFolderPath')
+        if pathString is None:
+            raise MissingInformation(f'Could not retrieve "goldenSampleFolderPath" for machine {hostname()}".')
+        return pathString
+    
+    def _autodetermineFileName(self) -> str:
+        return 'GS_' + self._component.name + '.out'
 
     def generateReport(self) -> DataFrame:
         return DataFrame(_generateCompleteReport(self._connection, self._component))
@@ -344,17 +437,6 @@ class GoldenSampleReporter:
         If the file does not exist, it is created."""
         
         report = _generateCompleteReport(self._connection, self._component)
-        lastLine = [report[-1]]
-        lastLineDF = DataFrame(lastLine)
-
-        if self._filePath.exists():
-
-            header = list(lastLine[0].keys())
-            if not _checkReportHeader(header, self._filePath):
-                raise GoldenSampleReporterError(f'Header in file "{self._filePath}" does not match expected header.')
-
-            with open(self._filePath, 'a', newline='') as outFile:
-                lastLineDF.to_csv(outFile, index = False, header = False)
-        else:
-            with open(self._filePath, 'w', newline='') as outFile:
-                lastLineDF.to_csv(outFile, index = False)
+        lastLine = report[-1]
+        
+        _appendReportLine(lastLine, self._filePath)

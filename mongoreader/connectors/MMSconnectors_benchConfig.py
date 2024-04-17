@@ -18,6 +18,7 @@ benchConfig = [
         "description": "MPI Machine - Chips",
         "benchAcronym": "BC_07",
         "folderPath": r"V:\Backup_Production_Benches\AFR_Backup_Production_Benches\BC_07\ProfMisOut",
+        "goldenSampleFolderPath": r"V:\Backup_Production_Benches\AFR_Backup_Production_Benches\BC_07\dutrefout",
         "localOut2EDCpath": r"C:\Program Files\OUT2EDC\Out2EDC.exe",
     },
     {
