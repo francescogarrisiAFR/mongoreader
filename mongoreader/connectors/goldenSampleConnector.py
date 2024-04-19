@@ -409,7 +409,7 @@ class GoldenSampleReporter:
 
     def _autodetermineFolderPath(self) -> Path:
         benchConfig = getBenchConfig(hostname())
-        pathString = benchConfig.get('goldenSampleFolderPath')
+        pathString = Path(benchConfig.get('goldenSampleFolderPath'))
         if pathString is None:
             raise MissingInformation(f'Could not retrieve "goldenSampleFolderPath" for machine {hostname()}".')
         return pathString
@@ -430,6 +430,7 @@ class GoldenSampleReporter:
         
         report = _generateCompleteReport(self._connection, self._component)
         _saveReportToCSV(report, self._filePath)
+        log.info(f'Saved all data for golden sample "{self._component.name}" to file {self._filePath}.')
 
     def appendLastMeasurement(self):
         """Appends the last measurement to the report file.
@@ -440,3 +441,4 @@ class GoldenSampleReporter:
         lastLine = report[-1]
         
         _appendReportLine(lastLine, self._filePath)
+        log.info(f'Appended line for golden sample "{self._component.name}" to file {self._filePath}.')
