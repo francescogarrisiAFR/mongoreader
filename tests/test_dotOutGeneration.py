@@ -497,7 +497,10 @@ def generateChip(blueprint:mom.opticalChipBlueprint) -> mom.opticalChipBlueprint
     if not isinstance(cmp, mom.component):
         raise TypeError('generateEmptyComponent() is not spawning a component.')
 
-    cmp.setField('testHistory', MOCKUP_HISTORY)
+    if hasattr(cmp, 'testHistory'):
+        cmp.testHistory = MOCKUP_HISTORY
+    else:
+        cmp.setField('testHistory', MOCKUP_HISTORY)
 
     return cmp
 
