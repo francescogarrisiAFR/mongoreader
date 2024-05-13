@@ -151,7 +151,7 @@ def _resultsFromTestHistoryEntry(entry:dict) -> list[dict]:
 
     for res in testResults:
         dic = {
-            'resultName': res.name,
+            'resultName': res.resultName,
             'location': res.location,
             'resultTags': res.resultTags,
             'resultValue': res.value,
