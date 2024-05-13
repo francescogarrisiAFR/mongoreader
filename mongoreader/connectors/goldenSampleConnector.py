@@ -144,7 +144,7 @@ def _resultsFromTestHistoryEntry(entry:dict) -> list[dict]:
     """Returns a list of dictionaries containing the relevant information
     to be used to fill a raw of the golden sample report."""
 
-    testResults = cmpGGF.scoopResultsFromTestEntry(entry)
+    testResults = cmpGGF._scoopResultsFromTestEntry(entry)
     if testResults is None: testResults = []
 
     resultsDicts = []
