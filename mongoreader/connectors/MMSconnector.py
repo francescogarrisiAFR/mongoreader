@@ -1738,7 +1738,7 @@ def runOut2EDC(exePath:Path, dotOutPath:Path,
     command = [f'{exePath}', f'{dotOutPath}']
 
     try:
-        run(command, shell = True, capture_output=True, check = True, timeout=5)
+        run(command, shell = True, capture_output=True, check = True, timeout=10)
 
     except CalledProcessError as e:
         log.error('An error occurred with running OUT2EDC.exe')
