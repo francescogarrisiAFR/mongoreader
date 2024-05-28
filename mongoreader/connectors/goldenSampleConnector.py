@@ -45,6 +45,18 @@ def _isListOfDicts(arg) -> bool:
             return True
     return False
 
+def isGoldenSample(component:mom.component) -> bool:
+
+    tags = component.getField('tags', verbose = None,
+                              notFoundValues = [[], None])
+    if tags is None:
+        return False
+
+    if not 'Golden Sample' in tags:
+        return False
+
+    return True
+
 # --- Information retrieval functions ---
 
 def _retrieveBlueprint(connection:mom.connection, component:mom.component) -> mom.blueprint:
@@ -144,14 +156,14 @@ def _resultsFromTestHistoryEntry(entry:dict) -> list[dict]:
     """Returns a list of dictionaries containing the relevant information
     to be used to fill a raw of the golden sample report."""
 
-    testResults = cmpGGF.scoopResultsFromTestEntry(entry)
+    testResults = cmpGGF._scoopResultsFromTestEntry(entry)
     if testResults is None: testResults = []
 
     resultsDicts = []
 
     for res in testResults:
         dic = {
-            'resultName': res.name,
+            'resultName': res.resultName,
             'location': res.location,
             'resultTags': res.resultTags,
             'resultValue': res.value,
@@ -384,6 +396,9 @@ class GoldenSampleReporter:
             if not isinstance(fileName, str):
                 raise TypeError(f'fileName must be a string (it is {type(fileName)}).')
 
+        if not isGoldenSample(component):
+            log.warning(f'[GoldenSampleReporter] Component "{component.name}" is not a golden sample.')
+
         self._connection = connection
         self._component = component
 
@@ -409,7 +424,7 @@ class GoldenSampleReporter:
 
     def _autodetermineFolderPath(self) -> Path:
         benchConfig = getBenchConfig(hostname())
-        pathString = benchConfig.get('goldenSampleFolderPath')
+        pathString = Path(benchConfig.get('goldenSampleFolderPath'))
         if pathString is None:
             raise MissingInformation(f'Could not retrieve "goldenSampleFolderPath" for machine {hostname()}".')
         return pathString
@@ -430,13 +445,21 @@ class GoldenSampleReporter:
         
         report = _generateCompleteReport(self._connection, self._component)
         _saveReportToCSV(report, self._filePath)
+        log.info(f'Saved all data for golden sample "{self._component.name}" to file {self._filePath}.')
+        if not isGoldenSample(self._component):
+            log.warning(f'Component "{self._component.name}" is not actually a golden sample.')
 
     def appendLastMeasurement(self):
         """Appends the last measurement to the report file.
         
         If the file does not exist, it is created."""
         
+        
+
         report = _generateCompleteReport(self._connection, self._component)
         lastLine = report[-1]
         
         _appendReportLine(lastLine, self._filePath)
+        log.info(f'Appended line for golden sample "{self._component.name}" to file {self._filePath}.')
+        if not isGoldenSample(self._component):
+            log.warning(f'Component "{self._component.name}" is not actually a golden sample.')
