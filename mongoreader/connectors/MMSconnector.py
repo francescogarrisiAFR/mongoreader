@@ -1133,10 +1133,16 @@ class DotOutManager(ABC):
             self.folderPath = Path(benchConfig['folderPath'])
             log.info(f'folderPath not passed. Using default for bench: "{self.folderPath}"')
             
-    def _generateDotOutData(self, component):
+    def _generateDotOutData(self, component) -> None:
+        """Generates the dot-out data for the component (the datasheet), which
+        is saved on the component itself. The data is not uploaded to the
+        database (component is not mongoReplaced)."""
         generateComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
 
-    def _generateAndSaveDotOutData(self, component):
+    def _generateAndSaveDotOutData(self, component) -> None:
+        """Generates the dot-out data for the component (the datasheet), which
+        is saved on the component itself. The data is also uploaded to the
+        database (component is mongoReplaced)."""
         generateAndSaveComponentDotOutData(component, self.connection, self.blueprint, self.processStage)
 
     @abstractmethod

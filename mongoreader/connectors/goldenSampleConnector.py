@@ -259,7 +259,6 @@ def _generateDataRow(DSElements, testHistoryEntry:dict) -> list[dict]:
             if _doResultAndElementMatch(res, DSelement):
                 
                 rawValues[i] = _normalizeValue(res['resultValue'], res['resultError'])
-                break
     
     return rawValues
 
