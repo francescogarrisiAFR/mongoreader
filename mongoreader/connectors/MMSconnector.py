@@ -1373,14 +1373,19 @@ class DotOutManager_Modules(DotOutManager):
         
         if self._isModuleLegacy(module):
             batch = module.getField('batch', verbose = False)
-            fileStem = batch.replace('/', '-')
-
+            
+            fileStem = batch.replace('/', '-') if batch is not None else 'NoBatch'
+            
             if self.processStage is not None:
                 fileStem += f'_{self._processStageTag(self.processStage)}_legacy'
 
         else:
-            batch = module.getField('batch', verbose = False)
-            fileStem = batch.replace('/', '-')
+            
+            PN = module.getField(['supportDictionary', 'MMSrecord', 'MMSinfo', 'P\\N REV'])
+            
+            if PN is None: PN = 'NoPN'
+            
+            fileStem = PN
             
             if self.processStage is not None:
                 fileStem += f'_{self._processStageTag(self.processStage)}'
