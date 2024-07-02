@@ -1361,6 +1361,10 @@ class DotOutManager_Modules(DotOutManager):
 
     @staticmethod
     def _isModuleLegacy(module) -> bool:
+
+        if not "MMSrecord" in module.getField('supportDictionary', valueIfNotFound = {}, verbose = False):
+            return False
+
         return 'SN' not in module.name
 
     @staticmethod
