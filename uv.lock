@@ -67,6 +67,15 @@ wheels = [
 ]
 
 [[package]]
+name = "colorama"
+version = "0.4.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335 },
+]
+
+[[package]]
 name = "contourpy"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -160,6 +169,18 @@ wheels = [
 ]
 
 [[package]]
+name = "datautils"
+version = "0.7.7"
+source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils.git?branch=uv-packaging#6737410076522e16efb30b656975021134646e27" }
+dependencies = [
+    { name = "bson" },
+    { name = "colorama" },
+    { name = "gitpython" },
+    { name = "numpy" },
+    { name = "pytz" },
+]
+
+[[package]]
 name = "dnspython"
 version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -199,6 +220,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/e4/6934513ec2c4d3d69ca1bc3bd34d5c69dafcbf68c15388dd3bb062daf345/fonttools-4.57.0-cp313-cp313-win32.whl", hash = "sha256:8e2e12d0d862f43d51e5afb8b9751c77e6bec7d2dc00aad80641364e9df5b199", size = 2144833 },
     { url = "https://files.pythonhosted.org/packages/c4/0d/2177b7fdd23d017bcfb702fd41e47d4573766b9114da2fddbac20dcc4957/fonttools-4.57.0-cp313-cp313-win_amd64.whl", hash = "sha256:f1d6bc9c23356908db712d282acb3eebd4ae5ec6d8b696aa40342b1d84f8e9e3", size = 2190799 },
     { url = "https://files.pythonhosted.org/packages/90/27/45f8957c3132917f91aaa56b700bcfc2396be1253f685bd5c68529b6f610/fonttools-4.57.0-py3-none-any.whl", hash = "sha256:3122c604a675513c68bd24c6a8f9091f1c2376d18e8f5fe5a101746c81b3e98f", size = 1093605 },
+]
+
+[[package]]
+name = "gitdb"
+version = "4.0.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "smmap" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/94/63b0fc47eb32792c7ba1fe1b694daec9a63620db1e313033d18140c2320a/gitdb-4.0.12.tar.gz", hash = "sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571", size = 394684 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/61/5c78b91c3143ed5c14207f463aecfc8f9dbb5092fb2869baf37c273b2705/gitdb-4.0.12-py3-none-any.whl", hash = "sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf", size = 62794 },
+]
+
+[[package]]
+name = "gitpython"
+version = "3.1.44"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "gitdb" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/89/37df0b71473153574a5cdef8f242de422a0f5d26d7a9e231e6f169b4ad14/gitpython-3.1.44.tar.gz", hash = "sha256:c87e30b26253bf5418b01b0660f818967f3c503193838337fe5e573331249269", size = 214196 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/9a/4114a9057db2f1462d5c8f8390ab7383925fe1ac012eaa42402ad65c2963/GitPython-3.1.44-py3-none-any.whl", hash = "sha256:9e0e10cda9bed1ee64bc9a6de50e7e38a9c9943241cd7f585f6df3ed28011110", size = 207599 },
 ]
 
 [[package]]
@@ -386,38 +431,31 @@ wheels = [
 ]
 
 [[package]]
-name = "mongo-datautils"
-version = "0.7.6"
-source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils.git#a332de942b5ad160236f2c0006c5d93f835cb456" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pytz" },
-]
-
-[[package]]
 name = "mongomanager"
 version = "2.11.0"
-source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongomanager.git?branch=uv-packaging#80954d2699e9dfbbf04cd333c52aa7b9268d0a97" }
+source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongomanager.git?branch=uv-packaging#a70d2911beddd94e1076d386d71ba5e80eb1d880" }
 dependencies = [
     { name = "bson" },
-    { name = "mongo-datautils" },
+    { name = "colorama" },
+    { name = "datautils" },
     { name = "mongoutils" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pymongo" },
     { name = "pytz" },
     { name = "scikit-rf" },
+    { name = "spammer" },
     { name = "termcolor" },
 ]
 
 [[package]]
 name = "mongoreader"
-version = "0.1.0"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "bson" },
+    { name = "datautils" },
     { name = "matplotlib" },
-    { name = "mongo-datautils" },
     { name = "mongomanager" },
     { name = "mongoutils" },
     { name = "numpy" },
@@ -427,8 +465,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "bson", specifier = ">=0.5.10" },
+    { name = "datautils", git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils.git?branch=uv-packaging" },
     { name = "matplotlib", specifier = ">=3.10.1" },
-    { name = "mongo-datautils", git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils" },
     { name = "mongomanager", git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongomanager.git?branch=uv-packaging" },
     { name = "mongoutils", git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongoutils.git?branch=uv-packaging" },
     { name = "numpy", specifier = ">=2.2.4" },
@@ -438,11 +476,11 @@ requires-dist = [
 [[package]]
 name = "mongoutils"
 version = "1.8.0"
-source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongoutils.git?branch=uv-packaging#575f13c13e78cc87a97885910879a2307e0eb1f0" }
+source = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongoutils.git?branch=uv-packaging#56cc14cf4ea891be99abd5aae68015388f99c7f7" }
 dependencies = [
     { name = "bson" },
+    { name = "datautils" },
     { name = "keyring" },
-    { name = "mongo-datautils" },
     { name = "pymongo" },
     { name = "pytz" },
 ]
@@ -861,6 +899,20 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050 },
 ]
+
+[[package]]
+name = "smmap"
+version = "5.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/cd/a040c4b3119bbe532e5b0732286f805445375489fceaec1f48306068ee3b/smmap-5.0.2.tar.gz", hash = "sha256:26ea65a03958fa0c8a1c7e8c7a58fdc77221b8910f6be2131affade476898ad5", size = 22329 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/be/d09147ad1ec7934636ad912901c5fd7667e1c858e19d355237db0d0cd5e4/smmap-5.0.2-py3-none-any.whl", hash = "sha256:b30115f0def7d7531d22a0fb6502488d879e75b260a9db4d0819cfb25403af5e", size = 24303 },
+]
+
+[[package]]
+name = "spammer"
+version = "0.2.0"
+source = { git = "ssh://git@gitlab.fiber-resources.com/testing/spammer.git#3d35bcd6f7358b5730cc70c340050c5080067e41" }
 
 [[package]]
 name = "termcolor"

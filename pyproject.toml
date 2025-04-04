@@ -9,8 +9,8 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "bson>=0.5.10",
+    "datautils",
     "matplotlib>=3.10.1",
-    "mongo-datautils",
     "mongomanager",
     "mongoutils",
     "numpy>=2.2.4",
@@ -27,4 +27,4 @@ build-backend = "hatchling.build"
 [tool.uv.sources]
 mongoutils = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongoutils.git", branch = "uv-packaging" }
 mongomanager = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongomanager.git", branch = "uv-packaging" }
-mongo-datautils = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils" }
+datautils = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils.git", branch = "uv-packaging" }
