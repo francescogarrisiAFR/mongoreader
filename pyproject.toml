@@ -1,45 +1,30 @@
-[build-system]
-requires = [ "setuptools>=41", "wheel", "setuptools-git-versioning<2", ]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["mongoreader*"]
-
-[tool.setuptools.dynamic]
-version = {attr = "mongoreader.__version__"}
-
 [project]
 name = "mongoreader"
-description = "Package for plotting data from MongoDB"
-license = { text = "AGPLv3+" }
-requires-python = ">=3.9"
+version = "1.4.0"
+description = "Add your description here"
+readme = "README.md"
 authors = [
-  { name = "Francesco Garrisi", email = "Francesco.Garrisi@fiber-resources.com" },
+    { name = "Francesco Garrisi", email = "francesco.garrisi@fiber-resources.com" }
 ]
-keywords = []
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Environment :: Console",
-  "Intended Audience :: Developers",
-  "Intended Audience :: Education",
-  "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: AGPLv3+ License",
-  "Operating System :: OS Independent",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Topic :: Scientific/Engineering :: Physics",
-]
+requires-python = ">=3.11"
 dependencies = [
-  "colorama>=0.4.6",
-  "keyring>=23.13.1",
-  "pymongo>=4.3.3",
-  "pytz>=2022.7",
-  "numpy>=1.24.1",
-  "mongomanager>=2.0.0",
-  "numpy>=1.24.1",
-  "matplotlib>=3.6.2",
+    "bson>=0.5.10",
+    "matplotlib>=3.10.1",
+    "mongo-datautils",
+    "mongomanager",
+    "mongoutils",
+    "numpy>=2.2.4",
+    "pandas>=2.2.3",
 ]
-dynamic = ["version"]
+
+[project.scripts]
+mongoreader = "mongoreader:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+mongoutils = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongoutils.git", branch = "uv-packaging" }
+mongomanager = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/mongomanager.git", branch = "uv-packaging" }
+mongo-datautils = { git = "ssh://git@gitlab.fiber-resources.com/mongodb/datautils" }
